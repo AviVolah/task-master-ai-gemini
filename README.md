@@ -2,6 +2,8 @@
 
 ### by [@eyaltoledano](https://x.com/eyaltoledano)
 
+### refactored to work with Gemini by [@longmaba](https://x.com/longmaba)
+
 A task management system for AI-driven development with Gemini, designed to work seamlessly with Cursor AI.
 
 ## Requirements
@@ -20,7 +22,7 @@ The script can be configured through environment variables in a `.env` file at t
 
 ### Optional Configuration
 
-- `MODEL`: Specify which Gemini model to use (default: "gemini-pro")
+- `MODEL`: Specify which Gemini model to use (default: "gemini-1.5-pro")
 - `MAX_TOKENS`: Maximum tokens for model responses (default: 4000)
 - `TEMPERATURE`: Temperature for model responses (default: 0.7)
 - `DEBUG`: Enable debug logging (default: false)
@@ -34,10 +36,10 @@ The script can be configured through environment variables in a `.env` file at t
 
 ```bash
 # Install globally
-npm install -g task-master-ai
+npm install -g task-master-ai-gemini
 
 # OR install locally within your project
-npm install task-master-ai
+npm install task-master-ai-gemini
 ```
 
 ### Initialize a new project
@@ -85,14 +87,14 @@ task-master generate
 Try running it with Node directly:
 
 ```bash
-node node_modules/task-master-ai/scripts/init.js
+node node_modules/task-master-ai-gemini/scripts/init.js
 ```
 
 Or clone the repository and run:
 
 ```bash
-git clone https://github.com/eyaltoledano/task-master-ai.git
-cd task-master-ai
+git clone https://github.com/longmaba/task-master-ai-gemini.git
+cd task-master-ai-gemini
 node scripts/init.js
 ```
 

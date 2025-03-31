@@ -1,6 +1,6 @@
 {
   "name": "task-master-ai-gemini",
-  "version": "0.9.30",
+  "version": "0.9.32",
   "description": "A task management system for ambitious AI-driven development that doesn't overwhelm and confuse Cursor.",
   "main": "index.js",
   "type": "module",
@@ -30,10 +30,9 @@
     "mcp",
     "context"
   ],
-  "author": "Eyal Toledano",
+  "author": "Longmaba",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.0",
     "boxen": "^8.0.1",
     "chalk": "^4.1.2",
@@ -56,11 +55,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eyaltoledano/claude-task-master.git"
+    "url": "git+https://github.com/longmaba/task-master-ai-gemini.git"
   },
-  "homepage": "https://github.com/eyaltoledano/claude-task-master#readme",
+  "homepage": "https://github.com/longmaba/task-master-ai-gemini#readme",
   "bugs": {
-    "url": "https://github.com/eyaltoledano/claude-task-master/issues"
+    "url": "https://github.com/longmaba/task-master-ai-gemini/issues"
   },
   "files": [
     "scripts/init.js",
