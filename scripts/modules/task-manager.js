@@ -33,7 +33,13 @@ import {
   createProgressBar,
 } from "./ui.js";
 
-import { callGemini, generateComplexityAnalysisPrompt, geminiModel } from "./ai-services.js";
+import {
+  callGemini,
+  generateComplexityAnalysisPrompt,
+  geminiModel,
+  generateSubtasksWithGeminiWithResearch,
+  generateSubtasksWithGemini,
+} from "./ai-services.js";
 
 import { validateTaskDependencies, validateAndFixDependencies } from "./dependency-manager.js";
 
@@ -1137,67 +1143,67 @@ function safeColor(text, colorFn, maxLength = 0) {
  * @param {string} additionalContext - Additional context for generation
  * @returns {Promise<Array>} Array of generated subtasks
  */
-async function generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext = "") {
-  try {
-    log("info", "Generating subtasks with Gemini AI...");
+// async function generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext = "") {
+//   try {
+//     log("info", "Generating subtasks with Gemini AI...");
 
-    const prompt = `Generate ${numSubtasks} detailed subtasks for the following software development task:
+//     const prompt = `Generate ${numSubtasks} detailed subtasks for the following software development task:
 
-Task: ${task.title}
-Description: ${task.description}
-Details: ${task.details}
-Test Strategy: ${task.testStrategy}
+// Task: ${task.title}
+// Description: ${task.description}
+// Details: ${task.details}
+// Test Strategy: ${task.testStrategy}
 
-${additionalContext ? `Additional Context: ${additionalContext}\n` : ""}
+// ${additionalContext ? `Additional Context: ${additionalContext}\n` : ""}
 
-Each subtask should:
-1. Have a clear, specific title
-2. Include a detailed description of what needs to be done
-3. List any dependencies on other subtasks (if applicable)
-4. Have acceptance criteria for verification
+// Each subtask should:
+// 1. Have a clear, specific title
+// 2. Include a detailed description of what needs to be done
+// 3. List any dependencies on other subtasks (if applicable)
+// 4. Have acceptance criteria for verification
 
-Return the subtasks as a valid JSON array in this format:
-[
-  {
-    "id": number (starting from ${nextSubtaskId}),
-    "title": "string",
-    "description": "string",
-    "status": "pending",
-    "dependencies": [number],
-    "acceptanceCriteria": "string"
-  }
-]
+// Return the subtasks as a valid JSON array in this format:
+// [
+//   {
+//     "id": number (starting from ${nextSubtaskId}),
+//     "title": "string",
+//     "description": "string",
+//     "status": "pending",
+//     "dependencies": [number],
+//     "acceptanceCriteria": "string"
+//   }
+// ]
 
-IMPORTANT: Return ONLY the JSON array, nothing else.`;
+// IMPORTANT: Return ONLY the JSON array, nothing else.`;
 
-    const response = await callGemini(prompt);
+//     const response = await callGemini(prompt);
 
-    // Extract JSON from response
-    const jsonStart = response.indexOf("[");
-    const jsonEnd = response.lastIndexOf("]");
+//     // Extract JSON from response
+//     const jsonStart = response.indexOf("[");
+//     const jsonEnd = response.lastIndexOf("]");
 
-    if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("Could not find valid JSON array in Gemini's response");
-    }
+//     if (jsonStart === -1 || jsonEnd === -1) {
+//       throw new Error("Could not find valid JSON array in Gemini's response");
+//     }
 
-    const jsonText = response.substring(jsonStart, jsonEnd + 1);
-    const subtasks = JSON.parse(jsonText);
+//     const jsonText = response.substring(jsonStart, jsonEnd + 1);
+//     const subtasks = JSON.parse(jsonText);
 
-    // Validate subtasks
-    if (!Array.isArray(subtasks)) {
-      throw new Error("Generated subtasks is not an array");
-    }
+//     // Validate subtasks
+//     if (!Array.isArray(subtasks)) {
+//       throw new Error("Generated subtasks is not an array");
+//     }
 
-    if (subtasks.length === 0) {
-      throw new Error("No subtasks were generated");
-    }
+//     if (subtasks.length === 0) {
+//       throw new Error("No subtasks were generated");
+//     }
 
-    return subtasks;
-  } catch (error) {
-    log("error", `Error generating subtasks with Gemini: ${error.message}`);
-    throw error;
-  }
-}
+//     return subtasks;
+//   } catch (error) {
+//     log("error", `Error generating subtasks with Gemini: ${error.message}`);
+//     throw error;
+//   }
+// }
 
 /**
  * Expand a task with subtasks
@@ -1286,7 +1292,7 @@ async function expandTask(taskId, numSubtasks = CONFIG.defaultSubtasks, useResea
     let subtasks;
     if (useResearch) {
       log("info", "Using Gemini AI for research-backed subtask generation");
-      subtasks = await generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext);
+      subtasks = await generateSubtasksWithGeminiWithResearch(task, numSubtasks, nextSubtaskId, additionalContext);
     } else {
       log("info", "Generating subtasks with Gemini AI");
       subtasks = await generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext);
