@@ -695,7 +695,7 @@ export async function analyzeComplexityCommand(options) {
     const tasksFile = options.file || "tasks/tasks.json";
 
     // Analyze task complexity
-    const complexityData = await analyzeTaskComplexity(tasksFile);
+    const complexityData = await analyzeTaskComplexity(options);
 
     // Write the report to a file
     const reportPath = options.output || path.join(process.cwd(), "scripts", "task-complexity-report.json");

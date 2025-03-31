@@ -92,7 +92,13 @@ async function parsePRD(prdPath, tasksPath, numTasks) {
     const prdContent = fs.readFileSync(prdPath, "utf8");
 
     // Call Claude to generate tasks
-    const tasksData = await callGemini(prdContent, prdPath, numTasks);
+    let tasksData = await callGemini(prdContent, prdPath, numTasks);
+
+    // check if tasksData contain ```json and ```, remove them
+    tasksData = tasksData.replace("```json", "").replace("```", "");
+
+    // parse tasksData as JSON
+    tasksData = JSON.parse(tasksData);
 
     // Create the directory if it doesn't exist
     const tasksDir = path.dirname(tasksPath);
@@ -1810,62 +1816,255 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = "medium"
  * Analyzes task complexity using AI
  * @param {string} tasksFile - Path to the tasks.json file
  */
-export async function analyzeTaskComplexity(tasksFile = "tasks/tasks.json") {
-  let fullResponse = "";
-  let streamingInterval;
-  let loadingIndicator;
+export async function analyzeTaskComplexity(options) {
+  const tasksPath = options.file || "tasks/tasks.json";
+  const outputPath = options.output || "scripts/task-complexity-report.json";
+  const modelOverride = options.model;
+  const thresholdScore = parseFloat(options.threshold || "5");
+  const useResearch = options.research || false;
 
+  console.log(chalk.blue(`Analyzing task complexity and generating expansion recommendations...`));
   try {
-    // Ensure tasksFile is a string
-    if (typeof tasksFile !== "string") {
-      log("warn", "tasksFile parameter is not a string, using default path");
-      tasksFile = "tasks/tasks.json";
+    // Read tasks.json
+    console.log(chalk.blue(`Reading tasks from ${tasksPath}...`));
+    const tasksData = readJSON(tasksPath);
+
+    if (!tasksData || !tasksData.tasks || !Array.isArray(tasksData.tasks) || tasksData.tasks.length === 0) {
+      throw new Error("No tasks found in the tasks file");
     }
 
-    // Read tasks from file
-    log("info", `Reading tasks from: ${tasksFile}`);
-    const tasks = await readTasksFromFile(tasksFile);
-    if (!tasks || tasks.length === 0) {
-      throw new Error("No tasks found to analyze");
+    console.log(chalk.blue(`Found ${tasksData.tasks.length} tasks to analyze.`));
+
+    // Helper function to use Gemini for complexity analysis
+    async function useGeminiForComplexityAnalysis(prompt) {
+      try {
+        const result = await geminiModel.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
+            temperature: CONFIG.temperature,
+          },
+          systemInstruction:
+            "You are a technical analysis AI that only responds with clean, valid JSON. Never include explanatory text or markdown formatting in your response.",
+        });
+
+        const response = result.response.text();
+        console.log(chalk.green("Successfully generated complexity analysis with Gemini"));
+        return response;
+      } catch (error) {
+        console.error(chalk.red("Error analyzing task complexity with Gemini:"), error.message);
+        throw error;
+      }
     }
 
-    // Generate prompt for complexity analysis
-    const prompt = generateComplexityAnalysisPrompt(tasks);
+    // Prepare the prompt for the LLM
+    const prompt = generateComplexityAnalysisPrompt(tasksData);
 
     // Start loading indicator
-    loadingIndicator = startLoadingIndicator("Analyzing task complexity...");
+    const loadingIndicator = startLoadingIndicator("Calling AI to analyze task complexity...");
 
-    fullResponse = await useGeminiForComplexityAnalysis(prompt);
+    let fullResponse = "";
+
+    const researchPrompt = `You are conducting a detailed analysis of software development tasks to determine their complexity and how they should be broken down into subtasks.
+
+Please research each task thoroughly, considering best practices, industry standards, and potential implementation challenges before providing your analysis.
+
+CRITICAL: You MUST respond ONLY with a valid JSON array. Do not include ANY explanatory text, markdown formatting, or code block markers.
+
+${prompt}
+
+Your response must be a clean JSON array only, following exactly this format:
+[
+  {
+    "taskId": 1,
+    "taskTitle": "Example Task",
+    "complexityScore": 7,
+    "recommendedSubtasks": 4,
+    "expansionPrompt": "Detailed prompt for expansion",
+    "reasoning": "Explanation of complexity assessment"
+  },
+  // more tasks...
+]
+
+DO NOT include any text before or after the JSON array. No explanations, no markdown formatting.`;
+
+    try {
+      fullResponse = await useGeminiForComplexityAnalysis(researchPrompt);
+    } catch (error) {
+      stopLoadingIndicator(loadingIndicator);
+      throw error;
+    }
+
+    stopLoadingIndicator(loadingIndicator);
 
     // Parse and validate the response
-    const complexityData = parseComplexityResponse(fullResponse);
+    let complexityAnalysis;
+    try {
+      // Clean up the response to ensure it's valid JSON
+      let cleanedResponse = fullResponse;
 
-    // Stop loading indicator before returning
-    stopLoadingIndicator(loadingIndicator);
-    return complexityData;
+      // First check for JSON code blocks
+      const codeBlockMatch = fullResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        cleanedResponse = codeBlockMatch[1];
+        console.log(chalk.blue("Extracted JSON from code block"));
+      } else {
+        // Look for a complete JSON array pattern
+        const jsonArrayMatch = fullResponse.match(/(\[\s*\{\s*"[^"]*"\s*:[\s\S]*\}\s*\])/);
+        if (jsonArrayMatch) {
+          cleanedResponse = jsonArrayMatch[1];
+          console.log(chalk.blue("Extracted JSON array pattern"));
+        } else {
+          // Try to find the start of a JSON array and capture to the end
+          const jsonStartMatch = fullResponse.match(/(\[\s*\{[\s\S]*)/);
+          if (jsonStartMatch) {
+            cleanedResponse = jsonStartMatch[1];
+            // Try to find a proper closing to the array
+            const properEndMatch = cleanedResponse.match(/([\s\S]*\}\s*\])/);
+            if (properEndMatch) {
+              cleanedResponse = properEndMatch[1];
+            }
+            console.log(chalk.blue("Extracted JSON from start of array to end"));
+          }
+        }
+      }
+
+      // More aggressive cleaning if needed
+      const strictArrayMatch = cleanedResponse.match(/(\[\s*\{[\s\S]*\}\s*\])/);
+      if (strictArrayMatch) {
+        cleanedResponse = strictArrayMatch[1];
+        console.log(chalk.blue("Applied strict JSON array extraction"));
+      }
+
+      try {
+        complexityAnalysis = JSON.parse(cleanedResponse);
+      } catch (jsonError) {
+        // Try to fix common JSON issues
+        cleanedResponse = cleanedResponse.replace(/,(\s*[\]}])/g, "$1");
+        cleanedResponse = cleanedResponse.replace(/(\s*)(\w+)(\s*):(\s*)/g, '$1"$2"$3:$4');
+        cleanedResponse = cleanedResponse.replace(/:(\s*)'([^']*)'(\s*[,}])/g, ':$1"$2"$3');
+
+        try {
+          complexityAnalysis = JSON.parse(cleanedResponse);
+          console.log(chalk.green("Successfully parsed JSON after fixing common issues"));
+        } catch (fixedJsonError) {
+          // Try the individual task extraction as a last resort
+          console.log(chalk.red("Failed to parse JSON, attempting individual extraction..."));
+
+          const taskMatches = cleanedResponse.match(/\{\s*"taskId"\s*:\s*(\d+)[^}]*\}/g);
+          if (taskMatches && taskMatches.length > 0) {
+            console.log(chalk.yellow(`Found ${taskMatches.length} task objects, attempting to process individually`));
+
+            complexityAnalysis = [];
+            for (const taskMatch of taskMatches) {
+              try {
+                const fixedTask = taskMatch.replace(/,\s*$/, "");
+                const taskObj = JSON.parse(`${fixedTask}`);
+                if (taskObj && taskObj.taskId) {
+                  complexityAnalysis.push(taskObj);
+                }
+              } catch (taskParseError) {
+                console.log(chalk.yellow(`Could not parse individual task: ${taskMatch.substring(0, 30)}...`));
+              }
+            }
+
+            if (complexityAnalysis.length === 0) {
+              throw new Error("Could not parse any tasks");
+            }
+          } else {
+            throw fixedJsonError;
+          }
+        }
+      }
+
+      // Ensure it's an array
+      if (!Array.isArray(complexityAnalysis)) {
+        if (complexityAnalysis && typeof complexityAnalysis === "object") {
+          complexityAnalysis = [complexityAnalysis];
+        } else {
+          throw new Error("Response is not an array or object");
+        }
+      }
+
+      // Check for missing tasks
+      const taskIds = tasksData.tasks.map((t) => t.id);
+      const analysisTaskIds = complexityAnalysis.map((a) => a.taskId);
+      const missingTaskIds = taskIds.filter((id) => !analysisTaskIds.includes(id));
+
+      if (missingTaskIds.length > 0) {
+        console.log(chalk.yellow(`Missing analysis for ${missingTaskIds.length} tasks: ${missingTaskIds.join(", ")}`));
+        console.log(chalk.blue(`Attempting to analyze missing tasks...`));
+
+        // Create a subset of tasksData with just the missing tasks
+        const missingTasks = {
+          meta: tasksData.meta,
+          tasks: tasksData.tasks.filter((t) => missingTaskIds.includes(t.id)),
+        };
+
+        // Generate a prompt for just the missing tasks
+        const missingTasksPrompt = generateComplexityAnalysisPrompt(missingTasks);
+
+        // Call Gemini to analyze the missing tasks
+        const missingAnalysis = await useGeminiForComplexityAnalysis(missingTasksPrompt);
+
+        try {
+          const parsedMissingAnalysis = JSON.parse(missingAnalysis);
+          if (Array.isArray(parsedMissingAnalysis)) {
+            complexityAnalysis = [...complexityAnalysis, ...parsedMissingAnalysis];
+            console.log(chalk.green(`Successfully analyzed ${parsedMissingAnalysis.length} missing tasks`));
+          }
+        } catch (error) {
+          console.error(chalk.red(`Error analyzing missing tasks: ${error.message}`));
+          console.log(chalk.yellow(`Continuing with partial analysis...`));
+        }
+      }
+
+      // Create the final report
+      const report = {
+        meta: {
+          generatedAt: new Date().toISOString(),
+          tasksAnalyzed: tasksData.tasks.length,
+          thresholdScore: thresholdScore,
+          projectName: tasksData.meta?.projectName || "Your Project Name",
+          usedResearch: useResearch,
+        },
+        complexityAnalysis: complexityAnalysis,
+      };
+
+      // Write the report to file
+      console.log(chalk.blue(`Writing complexity report to ${outputPath}...`));
+      writeJSON(outputPath, report);
+
+      console.log(chalk.green(`Task complexity analysis complete. Report written to ${outputPath}`));
+
+      // Display a summary of findings
+      const highComplexity = complexityAnalysis.filter((t) => t.complexityScore >= 8).length;
+      const mediumComplexity = complexityAnalysis.filter((t) => t.complexityScore >= 5 && t.complexityScore < 8).length;
+      const lowComplexity = complexityAnalysis.filter((t) => t.complexityScore < 5).length;
+      const totalAnalyzed = complexityAnalysis.length;
+
+      console.log("\nComplexity Analysis Summary:");
+      console.log("----------------------------");
+      console.log(`Tasks in input file: ${tasksData.tasks.length}`);
+      console.log(`Tasks successfully analyzed: ${totalAnalyzed}`);
+      console.log(`High complexity tasks: ${highComplexity}`);
+      console.log(`Medium complexity tasks: ${mediumComplexity}`);
+      console.log(`Low complexity tasks: ${lowComplexity}`);
+      console.log(`Sum verification: ${highComplexity + mediumComplexity + lowComplexity} (should equal ${totalAnalyzed})`);
+      console.log(`Research-backed analysis: ${useResearch ? "Yes" : "No"}`);
+      console.log(`\nSee ${outputPath} for the full report and expansion commands.`);
+
+      return report;
+    } catch (error) {
+      console.error(chalk.red(`Failed to parse LLM response as JSON: ${error.message}`));
+      if (CONFIG.debug) {
+        console.debug(chalk.gray(`Raw response: ${fullResponse}`));
+      }
+      throw new Error("Invalid response format from LLM. Expected JSON.");
+    }
   } catch (error) {
     if (streamingInterval) clearInterval(streamingInterval);
     stopLoadingIndicator(loadingIndicator);
-    throw error;
-  }
-}
-
-// Helper function to use Gemini for complexity analysis
-async function useGeminiForComplexityAnalysis(prompt) {
-  try {
-    const result = await geminiModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
-        temperature: CONFIG.temperature,
-      },
-    });
-
-    const response = result.response.text();
-    console.log(chalk.green("Successfully generated complexity analysis with Gemini"));
-    return response;
-  } catch (error) {
-    console.error(chalk.red("Error analyzing task complexity with Gemini:"), error.message);
     throw error;
   }
 }
