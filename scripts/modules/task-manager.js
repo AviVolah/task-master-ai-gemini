@@ -33,13 +33,12 @@ import {
   createProgressBar,
 } from "./ui.js";
 
-import { callClaude, generateSubtasks, generateSubtasksWithPerplexity, generateComplexityAnalysisPrompt } from "./ai-services.js";
+import { callGemini, generateComplexityAnalysisPrompt, geminiModel } from "./ai-services.js";
 
 import { validateTaskDependencies, validateAndFixDependencies } from "./dependency-manager.js";
 
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({ model: CONFIG.model });
 
 // Import perplexity if available
 let perplexity;
@@ -62,6 +61,24 @@ try {
 }
 
 /**
+ * Read tasks from a tasks.json file
+ * @param {string} tasksFile - Path to the tasks.json file
+ * @returns {Array} Array of tasks
+ */
+async function readTasksFromFile(tasksFile) {
+  try {
+    const data = readJSON(tasksFile);
+    if (!data || !data.tasks) {
+      throw new Error(`No valid tasks found in ${tasksFile}`);
+    }
+    return data.tasks;
+  } catch (error) {
+    log("error", `Error reading tasks file: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * Parse a PRD file and generate tasks
  * @param {string} prdPath - Path to the PRD file
  * @param {string} tasksPath - Path to the tasks.json file
@@ -75,7 +92,7 @@ async function parsePRD(prdPath, tasksPath, numTasks) {
     const prdContent = fs.readFileSync(prdPath, "utf8");
 
     // Call Claude to generate tasks
-    const tasksData = await callClaude(prdContent, prdPath, numTasks);
+    const tasksData = await callGemini(prdContent, prdPath, numTasks);
 
     // Create the directory if it doesn't exist
     const tasksDir = path.dirname(tasksPath);
@@ -251,12 +268,12 @@ Return only the updated tasks as a valid JSON array.`,
           }, 500);
 
           // Use streaming API call
-          const stream = await genAI.generateContent({
-            model: model,
-            prompt: `${systemPrompt}\n\n${taskData}`,
-            max_tokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
-            temperature: parseFloat(process.env.TEMPERATURE || CONFIG.temperature),
-            stream: true,
+          const stream = await geminiModel.generateContent({
+            contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${taskData}` }] }],
+            generationConfig: {
+              maxOutputTokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
+              temperature: CONFIG.temperature,
+            },
           });
 
           // Process the stream
@@ -1107,10 +1124,80 @@ function safeColor(text, colorFn, maxLength = 0) {
 }
 
 /**
+ * Generate subtasks for a task using Gemini AI
+ * @param {Object} task - The task to generate subtasks for
+ * @param {number} numSubtasks - Number of subtasks to generate
+ * @param {number} nextSubtaskId - Next available subtask ID
+ * @param {string} additionalContext - Additional context for generation
+ * @returns {Promise<Array>} Array of generated subtasks
+ */
+async function generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext = "") {
+  try {
+    log("info", "Generating subtasks with Gemini AI...");
+
+    const prompt = `Generate ${numSubtasks} detailed subtasks for the following software development task:
+
+Task: ${task.title}
+Description: ${task.description}
+Details: ${task.details}
+Test Strategy: ${task.testStrategy}
+
+${additionalContext ? `Additional Context: ${additionalContext}\n` : ""}
+
+Each subtask should:
+1. Have a clear, specific title
+2. Include a detailed description of what needs to be done
+3. List any dependencies on other subtasks (if applicable)
+4. Have acceptance criteria for verification
+
+Return the subtasks as a valid JSON array in this format:
+[
+  {
+    "id": number (starting from ${nextSubtaskId}),
+    "title": "string",
+    "description": "string",
+    "status": "pending",
+    "dependencies": [number],
+    "acceptanceCriteria": "string"
+  }
+]
+
+IMPORTANT: Return ONLY the JSON array, nothing else.`;
+
+    const response = await callGemini(prompt);
+
+    // Extract JSON from response
+    const jsonStart = response.indexOf("[");
+    const jsonEnd = response.lastIndexOf("]");
+
+    if (jsonStart === -1 || jsonEnd === -1) {
+      throw new Error("Could not find valid JSON array in Gemini's response");
+    }
+
+    const jsonText = response.substring(jsonStart, jsonEnd + 1);
+    const subtasks = JSON.parse(jsonText);
+
+    // Validate subtasks
+    if (!Array.isArray(subtasks)) {
+      throw new Error("Generated subtasks is not an array");
+    }
+
+    if (subtasks.length === 0) {
+      throw new Error("No subtasks were generated");
+    }
+
+    return subtasks;
+  } catch (error) {
+    log("error", `Error generating subtasks with Gemini: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * Expand a task with subtasks
  * @param {number} taskId - Task ID to expand
  * @param {number} numSubtasks - Number of subtasks to generate
- * @param {boolean} useResearch - Whether to use research (Perplexity)
+ * @param {boolean} useResearch - Whether to use research (Gemini)
  * @param {string} additionalContext - Additional context
  */
 async function expandTask(taskId, numSubtasks = CONFIG.defaultSubtasks, useResearch = false, additionalContext = "") {
@@ -1192,11 +1279,11 @@ async function expandTask(taskId, numSubtasks = CONFIG.defaultSubtasks, useResea
     // Generate subtasks
     let subtasks;
     if (useResearch) {
-      log("info", "Using Perplexity AI for research-backed subtask generation");
-      subtasks = await generateSubtasksWithPerplexity(task, numSubtasks, nextSubtaskId, additionalContext);
+      log("info", "Using Gemini AI for research-backed subtask generation");
+      subtasks = await generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext);
     } else {
-      log("info", "Generating subtasks with Claude only");
-      subtasks = await generateSubtasks(task, numSubtasks, nextSubtaskId, additionalContext);
+      log("info", "Generating subtasks with Gemini AI");
+      subtasks = await generateSubtasksWithGemini(task, numSubtasks, nextSubtaskId, additionalContext);
     }
 
     // Add the subtasks to the task
@@ -1231,18 +1318,6 @@ async function expandTask(taskId, numSubtasks = CONFIG.defaultSubtasks, useResea
     });
 
     console.log(table.toString());
-
-    // Show next steps
-    console.log(
-      boxen(
-        chalk.white.bold("Next Steps:") +
-          "\n\n" +
-          `${chalk.cyan("1.")} Run ${chalk.yellow(`task-master show ${taskId}`)} to see the full task with subtasks\n` +
-          `${chalk.cyan("2.")} Start working on subtask: ${chalk.yellow(`task-master set-status --id=${taskId}.1 --status=in-progress`)}\n` +
-          `${chalk.cyan("3.")} Mark subtask as done: ${chalk.yellow(`task-master set-status --id=${taskId}.1 --status=done`)}`,
-        { padding: 1, borderColor: "cyan", borderStyle: "round", margin: { top: 1 } }
-      )
-    );
   } catch (error) {
     log("error", `Error expanding task: ${error.message}`);
     console.error(chalk.red(`Error: ${error.message}`));
@@ -1258,7 +1333,7 @@ async function expandTask(taskId, numSubtasks = CONFIG.defaultSubtasks, useResea
 /**
  * Expand all pending tasks with subtasks
  * @param {number} numSubtasks - Number of subtasks per task
- * @param {boolean} useResearch - Whether to use research (Perplexity)
+ * @param {boolean} useResearch - Whether to use research (Gemini)
  * @param {string} additionalContext - Additional context
  * @param {boolean} forceFlag - Force regeneration for tasks with subtasks
  */
@@ -1392,9 +1467,11 @@ async function expandAllTasks(numSubtasks = CONFIG.defaultSubtasks, useResearch 
         // Generate subtasks
         let subtasks;
         if (useResearch) {
-          subtasks = await generateSubtasksWithPerplexity(task, taskSubtasks, nextSubtaskId, taskContext);
+          log("info", "Using Gemini AI for research-backed subtask generation");
+          subtasks = await generateSubtasksWithGemini(task, taskSubtasks, nextSubtaskId, taskContext);
         } else {
-          subtasks = await generateSubtasks(task, taskSubtasks, nextSubtaskId, taskContext);
+          log("info", "Generating subtasks with Gemini AI");
+          subtasks = await generateSubtasksWithGemini(task, taskSubtasks, nextSubtaskId, taskContext);
         }
 
         // Add the subtasks to the task
@@ -1630,12 +1707,12 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = "medium"
 
   try {
     // Call Claude with streaming enabled
-    const stream = await genAI.generateContent({
-      model: model,
-      prompt: userPrompt,
-      max_tokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
-      temperature: parseFloat(process.env.TEMPERATURE || CONFIG.temperature),
-      stream: true,
+    const stream = await geminiModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        maxOutputTokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
+        temperature: CONFIG.temperature,
+      },
     });
 
     // Update loading indicator to show streaming progress
@@ -1730,579 +1807,67 @@ async function addTask(tasksPath, prompt, dependencies = [], priority = "medium"
 }
 
 /**
- * Analyzes task complexity and generates expansion recommendations
- * @param {Object} options Command options
+ * Analyzes task complexity using AI
+ * @param {string} tasksFile - Path to the tasks.json file
  */
-async function analyzeTaskComplexity(options) {
-  const tasksPath = options.file || "tasks/tasks.json";
-  const outputPath = options.output || "scripts/task-complexity-report.json";
-  const modelOverride = options.model;
-  const thresholdScore = parseFloat(options.threshold || "5");
-  const useResearch = options.research || false;
-
-  console.log(chalk.blue(`Analyzing task complexity and generating expansion recommendations...`));
+export async function analyzeTaskComplexity(tasksFile = "tasks/tasks.json") {
+  let fullResponse = "";
+  let streamingInterval;
+  let loadingIndicator;
 
   try {
-    // Read tasks.json
-    console.log(chalk.blue(`Reading tasks from ${tasksPath}...`));
-    const tasksData = readJSON(tasksPath);
-
-    if (!tasksData || !tasksData.tasks || !Array.isArray(tasksData.tasks) || tasksData.tasks.length === 0) {
-      throw new Error("No tasks found in the tasks file");
+    // Ensure tasksFile is a string
+    if (typeof tasksFile !== "string") {
+      log("warn", "tasksFile parameter is not a string, using default path");
+      tasksFile = "tasks/tasks.json";
     }
 
-    console.log(chalk.blue(`Found ${tasksData.tasks.length} tasks to analyze.`));
+    // Read tasks from file
+    log("info", `Reading tasks from: ${tasksFile}`);
+    const tasks = await readTasksFromFile(tasksFile);
+    if (!tasks || tasks.length === 0) {
+      throw new Error("No tasks found to analyze");
+    }
 
-    // Prepare the prompt for the LLM
-    const prompt = generateComplexityAnalysisPrompt(tasksData);
+    // Generate prompt for complexity analysis
+    const prompt = generateComplexityAnalysisPrompt(tasks);
 
     // Start loading indicator
-    const loadingIndicator = startLoadingIndicator("Calling AI to analyze task complexity...");
+    loadingIndicator = startLoadingIndicator("Analyzing task complexity...");
 
-    let fullResponse = "";
-    let streamingInterval = null;
+    fullResponse = await useGeminiForComplexityAnalysis(prompt);
 
-    try {
-      // If research flag is set, use Perplexity first
-      if (useResearch) {
-        try {
-          console.log(chalk.blue("Using Perplexity AI for research-backed complexity analysis..."));
+    // Parse and validate the response
+    const complexityData = parseComplexityResponse(fullResponse);
 
-          // Modify prompt to include more context for Perplexity and explicitly request JSON
-          const researchPrompt = `You are conducting a detailed analysis of software development tasks to determine their complexity and how they should be broken down into subtasks.
-
-Please research each task thoroughly, considering best practices, industry standards, and potential implementation challenges before providing your analysis.
-
-CRITICAL: You MUST respond ONLY with a valid JSON array. Do not include ANY explanatory text, markdown formatting, or code block markers.
-
-${prompt}
-
-Your response must be a clean JSON array only, following exactly this format:
-[
-  {
-    "taskId": 1,
-    "taskTitle": "Example Task",
-    "complexityScore": 7,
-    "recommendedSubtasks": 4,
-    "expansionPrompt": "Detailed prompt for expansion",
-    "reasoning": "Explanation of complexity assessment"
-  },
-  // more tasks...
-]
-
-DO NOT include any text before or after the JSON array. No explanations, no markdown formatting.`;
-
-          const result = await perplexity.chat.completions.create({
-            model: process.env.PERPLEXITY_MODEL || "sonar-pro",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a technical analysis AI that only responds with clean, valid JSON. Never include explanatory text or markdown formatting in your response.",
-              },
-              {
-                role: "user",
-                content: researchPrompt,
-              },
-            ],
-            temperature: CONFIG.temperature,
-            max_tokens: CONFIG.maxTokens,
-          });
-
-          // Extract the response text
-          fullResponse = result.choices[0].message.content;
-          console.log(chalk.green("Successfully generated complexity analysis with Perplexity AI"));
-
-          if (streamingInterval) clearInterval(streamingInterval);
-          stopLoadingIndicator(loadingIndicator);
-
-          // ALWAYS log the first part of the response for debugging
-          console.log(chalk.gray("Response first 200 chars:"));
-          console.log(chalk.gray(fullResponse.substring(0, 200)));
-        } catch (perplexityError) {
-          console.log(chalk.yellow("Falling back to Claude for complexity analysis..."));
-          console.log(chalk.gray("Perplexity error:"), perplexityError.message);
-
-          // Continue to Claude as fallback
-          await useClaudeForComplexityAnalysis();
-        }
-      } else {
-        // Use Claude directly if research flag is not set
-        await useClaudeForComplexityAnalysis();
-      }
-
-      // Helper function to use Claude for complexity analysis
-      async function useClaudeForComplexityAnalysis() {
-        // Call the LLM API with streaming
-        const stream = await genAI.generateContent({
-          model: model,
-          prompt: prompt,
-          max_tokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
-          temperature: CONFIG.temperature,
-          stream: true,
-        });
-
-        // Update loading indicator to show streaming progress
-        let dotCount = 0;
-        streamingInterval = setInterval(() => {
-          readline.cursorTo(process.stdout, 0);
-          process.stdout.write(`Receiving streaming response from Claude${".".repeat(dotCount)}`);
-          dotCount = (dotCount + 1) % 4;
-        }, 500);
-
-        // Process the stream
-        for await (const chunk of stream) {
-          if (chunk.type === "content_block_delta" && chunk.delta.text) {
-            fullResponse += chunk.delta.text;
-          }
-        }
-
-        clearInterval(streamingInterval);
-        stopLoadingIndicator(loadingIndicator);
-
-        console.log(chalk.green("Completed streaming response from Claude API!"));
-      }
-
-      // Parse the JSON response
-      console.log(chalk.blue(`Parsing complexity analysis...`));
-      let complexityAnalysis;
-      try {
-        // Clean up the response to ensure it's valid JSON
-        let cleanedResponse = fullResponse;
-
-        // First check for JSON code blocks (common in markdown responses)
-        const codeBlockMatch = fullResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (codeBlockMatch) {
-          cleanedResponse = codeBlockMatch[1];
-          console.log(chalk.blue("Extracted JSON from code block"));
-        } else {
-          // Look for a complete JSON array pattern
-          // This regex looks for an array of objects starting with [ and ending with ]
-          const jsonArrayMatch = fullResponse.match(/(\[\s*\{\s*"[^"]*"\s*:[\s\S]*\}\s*\])/);
-          if (jsonArrayMatch) {
-            cleanedResponse = jsonArrayMatch[1];
-            console.log(chalk.blue("Extracted JSON array pattern"));
-          } else {
-            // Try to find the start of a JSON array and capture to the end
-            const jsonStartMatch = fullResponse.match(/(\[\s*\{[\s\S]*)/);
-            if (jsonStartMatch) {
-              cleanedResponse = jsonStartMatch[1];
-              // Try to find a proper closing to the array
-              const properEndMatch = cleanedResponse.match(/([\s\S]*\}\s*\])/);
-              if (properEndMatch) {
-                cleanedResponse = properEndMatch[1];
-              }
-              console.log(chalk.blue("Extracted JSON from start of array to end"));
-            }
-          }
-        }
-
-        // Log the cleaned response for debugging
-        console.log(chalk.gray("Attempting to parse cleaned JSON..."));
-        console.log(chalk.gray("Cleaned response (first 100 chars):"));
-        console.log(chalk.gray(cleanedResponse.substring(0, 100)));
-        console.log(chalk.gray("Last 100 chars:"));
-        console.log(chalk.gray(cleanedResponse.substring(cleanedResponse.length - 100)));
-
-        // More aggressive cleaning - strip any non-JSON content at the beginning or end
-        const strictArrayMatch = cleanedResponse.match(/(\[\s*\{[\s\S]*\}\s*\])/);
-        if (strictArrayMatch) {
-          cleanedResponse = strictArrayMatch[1];
-          console.log(chalk.blue("Applied strict JSON array extraction"));
-        }
-
-        try {
-          complexityAnalysis = JSON.parse(cleanedResponse);
-        } catch (jsonError) {
-          console.log(chalk.yellow("Initial JSON parsing failed, attempting to fix common JSON issues..."));
-
-          // Try to fix common JSON issues
-          // 1. Remove any trailing commas in arrays or objects
-          cleanedResponse = cleanedResponse.replace(/,(\s*[\]}])/g, "$1");
-
-          // 2. Ensure property names are double-quoted
-          cleanedResponse = cleanedResponse.replace(/(\s*)(\w+)(\s*):(\s*)/g, '$1"$2"$3:$4');
-
-          // 3. Replace single quotes with double quotes for property values
-          cleanedResponse = cleanedResponse.replace(/:(\s*)'([^']*)'(\s*[,}])/g, ':$1"$2"$3');
-
-          // 4. Fix unterminated strings - common with LLM responses
-          const untermStringPattern = /:(\s*)"([^"]*)(?=[,}])/g;
-          cleanedResponse = cleanedResponse.replace(untermStringPattern, ':$1"$2"');
-
-          // 5. Fix multi-line strings by replacing newlines
-          cleanedResponse = cleanedResponse.replace(/:(\s*)"([^"]*)\n([^"]*)"/g, ':$1"$2 $3"');
-
-          try {
-            complexityAnalysis = JSON.parse(cleanedResponse);
-            console.log(chalk.green("Successfully parsed JSON after fixing common issues"));
-          } catch (fixedJsonError) {
-            console.log(chalk.red("Failed to parse JSON even after fixes, attempting more aggressive cleanup..."));
-
-            // Try to extract and process each task individually
-            try {
-              const taskMatches = cleanedResponse.match(/\{\s*"taskId"\s*:\s*(\d+)[^}]*\}/g);
-              if (taskMatches && taskMatches.length > 0) {
-                console.log(chalk.yellow(`Found ${taskMatches.length} task objects, attempting to process individually`));
-
-                complexityAnalysis = [];
-                for (const taskMatch of taskMatches) {
-                  try {
-                    // Try to parse each task object individually
-                    const fixedTask = taskMatch.replace(/,\s*$/, ""); // Remove trailing commas
-                    const taskObj = JSON.parse(`${fixedTask}`);
-                    if (taskObj && taskObj.taskId) {
-                      complexityAnalysis.push(taskObj);
-                    }
-                  } catch (taskParseError) {
-                    console.log(chalk.yellow(`Could not parse individual task: ${taskMatch.substring(0, 30)}...`));
-                  }
-                }
-
-                if (complexityAnalysis.length > 0) {
-                  console.log(chalk.green(`Successfully parsed ${complexityAnalysis.length} tasks individually`));
-                } else {
-                  throw new Error("Could not parse any tasks individually");
-                }
-              } else {
-                throw fixedJsonError;
-              }
-            } catch (individualError) {
-              console.log(chalk.red("All parsing attempts failed"));
-              throw jsonError; // throw the original error
-            }
-          }
-        }
-
-        // Ensure complexityAnalysis is an array
-        if (!Array.isArray(complexityAnalysis)) {
-          console.log(chalk.yellow("Response is not an array, checking if it contains an array property..."));
-
-          // Handle the case where the response might be an object with an array property
-          if (complexityAnalysis.tasks || complexityAnalysis.analysis || complexityAnalysis.results) {
-            complexityAnalysis = complexityAnalysis.tasks || complexityAnalysis.analysis || complexityAnalysis.results;
-          } else {
-            // If no recognizable array property, wrap it as an array if it's an object
-            if (typeof complexityAnalysis === "object" && complexityAnalysis !== null) {
-              console.log(chalk.yellow("Converting object to array..."));
-              complexityAnalysis = [complexityAnalysis];
-            } else {
-              throw new Error("Response does not contain a valid array or object");
-            }
-          }
-        }
-
-        // Final check to ensure we have an array
-        if (!Array.isArray(complexityAnalysis)) {
-          throw new Error("Failed to extract an array from the response");
-        }
-
-        // Check that we have an analysis for each task in the input file
-        const taskIds = tasksData.tasks.map((t) => t.id);
-        const analysisTaskIds = complexityAnalysis.map((a) => a.taskId);
-        const missingTaskIds = taskIds.filter((id) => !analysisTaskIds.includes(id));
-
-        if (missingTaskIds.length > 0) {
-          console.log(chalk.yellow(`Missing analysis for ${missingTaskIds.length} tasks: ${missingTaskIds.join(", ")}`));
-          console.log(chalk.blue(`Attempting to analyze missing tasks...`));
-
-          // Create a subset of tasksData with just the missing tasks
-          const missingTasks = {
-            meta: tasksData.meta,
-            tasks: tasksData.tasks.filter((t) => missingTaskIds.includes(t.id)),
-          };
-
-          // Generate a prompt for just the missing tasks
-          const missingTasksPrompt = generateComplexityAnalysisPrompt(missingTasks);
-
-          // Call the same AI model to analyze the missing tasks
-          let missingAnalysisResponse = "";
-
-          try {
-            // Start a new loading indicator
-            const missingTasksLoadingIndicator = startLoadingIndicator("Analyzing missing tasks...");
-
-            // Use the same AI model as the original analysis
-            if (useResearch) {
-              // Create the same research prompt but for missing tasks
-              const missingTasksResearchPrompt = `You are conducting a detailed analysis of software development tasks to determine their complexity and how they should be broken down into subtasks.
-
-Please research each task thoroughly, considering best practices, industry standards, and potential implementation challenges before providing your analysis.
-
-CRITICAL: You MUST respond ONLY with a valid JSON array. Do not include ANY explanatory text, markdown formatting, or code block markers.
-
-${missingTasksPrompt}
-
-Your response must be a clean JSON array only, following exactly this format:
-[
-  {
-    "taskId": 1,
-    "taskTitle": "Example Task",
-    "complexityScore": 7,
-    "recommendedSubtasks": 4,
-    "expansionPrompt": "Detailed prompt for expansion",
-    "reasoning": "Explanation of complexity assessment"
-  },
-  // more tasks...
-]
-
-DO NOT include any text before or after the JSON array. No explanations, no markdown formatting.`;
-
-              const result = await perplexity.chat.completions.create({
-                model: process.env.PERPLEXITY_MODEL || "sonar-pro",
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "You are a technical analysis AI that only responds with clean, valid JSON. Never include explanatory text or markdown formatting in your response.",
-                  },
-                  {
-                    role: "user",
-                    content: missingTasksResearchPrompt,
-                  },
-                ],
-                temperature: CONFIG.temperature,
-                max_tokens: CONFIG.maxTokens,
-              });
-
-              // Extract the response
-              missingAnalysisResponse = result.choices[0].message.content;
-            } else {
-              // Use Claude
-              const stream = await genAI.generateContent({
-                model: model,
-                prompt: missingTasksPrompt,
-                max_tokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
-                temperature: CONFIG.temperature,
-                stream: true,
-              });
-
-              // Process the stream
-              for await (const chunk of stream) {
-                if (chunk.type === "content_block_delta" && chunk.delta.text) {
-                  missingAnalysisResponse += chunk.delta.text;
-                }
-              }
-            }
-
-            // Stop the loading indicator
-            stopLoadingIndicator(missingTasksLoadingIndicator);
-
-            // Parse the response using the same parsing logic as before
-            let missingAnalysis;
-            try {
-              // Clean up the response to ensure it's valid JSON (using same logic as above)
-              let cleanedResponse = missingAnalysisResponse;
-
-              // Use the same JSON extraction logic as before
-              // ... (code omitted for brevity, it would be the same as the original parsing)
-
-              // First check for JSON code blocks
-              const codeBlockMatch = missingAnalysisResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-              if (codeBlockMatch) {
-                cleanedResponse = codeBlockMatch[1];
-                console.log(chalk.blue("Extracted JSON from code block for missing tasks"));
-              } else {
-                // Look for a complete JSON array pattern
-                const jsonArrayMatch = missingAnalysisResponse.match(/(\[\s*\{\s*"[^"]*"\s*:[\s\S]*\}\s*\])/);
-                if (jsonArrayMatch) {
-                  cleanedResponse = jsonArrayMatch[1];
-                  console.log(chalk.blue("Extracted JSON array pattern for missing tasks"));
-                } else {
-                  // Try to find the start of a JSON array and capture to the end
-                  const jsonStartMatch = missingAnalysisResponse.match(/(\[\s*\{[\s\S]*)/);
-                  if (jsonStartMatch) {
-                    cleanedResponse = jsonStartMatch[1];
-                    // Try to find a proper closing to the array
-                    const properEndMatch = cleanedResponse.match(/([\s\S]*\}\s*\])/);
-                    if (properEndMatch) {
-                      cleanedResponse = properEndMatch[1];
-                    }
-                    console.log(chalk.blue("Extracted JSON from start of array to end for missing tasks"));
-                  }
-                }
-              }
-
-              // More aggressive cleaning if needed
-              const strictArrayMatch = cleanedResponse.match(/(\[\s*\{[\s\S]*\}\s*\])/);
-              if (strictArrayMatch) {
-                cleanedResponse = strictArrayMatch[1];
-                console.log(chalk.blue("Applied strict JSON array extraction for missing tasks"));
-              }
-
-              try {
-                missingAnalysis = JSON.parse(cleanedResponse);
-              } catch (jsonError) {
-                // Try to fix common JSON issues (same as before)
-                cleanedResponse = cleanedResponse.replace(/,(\s*[\]}])/g, "$1");
-                cleanedResponse = cleanedResponse.replace(/(\s*)(\w+)(\s*):(\s*)/g, '$1"$2"$3:$4');
-                cleanedResponse = cleanedResponse.replace(/:(\s*)'([^']*)'(\s*[,}])/g, ':$1"$2"$3');
-
-                try {
-                  missingAnalysis = JSON.parse(cleanedResponse);
-                  console.log(chalk.green("Successfully parsed JSON for missing tasks after fixing common issues"));
-                } catch (fixedJsonError) {
-                  // Try the individual task extraction as a last resort
-                  console.log(chalk.red("Failed to parse JSON for missing tasks, attempting individual extraction..."));
-
-                  const taskMatches = cleanedResponse.match(/\{\s*"taskId"\s*:\s*(\d+)[^}]*\}/g);
-                  if (taskMatches && taskMatches.length > 0) {
-                    console.log(chalk.yellow(`Found ${taskMatches.length} task objects, attempting to process individually`));
-
-                    missingAnalysis = [];
-                    for (const taskMatch of taskMatches) {
-                      try {
-                        const fixedTask = taskMatch.replace(/,\s*$/, "");
-                        const taskObj = JSON.parse(`${fixedTask}`);
-                        if (taskObj && taskObj.taskId) {
-                          missingAnalysis.push(taskObj);
-                        }
-                      } catch (taskParseError) {
-                        console.log(chalk.yellow(`Could not parse individual task: ${taskMatch.substring(0, 30)}...`));
-                      }
-                    }
-
-                    if (missingAnalysis.length === 0) {
-                      throw new Error("Could not parse any missing tasks");
-                    }
-                  } else {
-                    throw fixedJsonError;
-                  }
-                }
-              }
-
-              // Ensure it's an array
-              if (!Array.isArray(missingAnalysis)) {
-                if (missingAnalysis && typeof missingAnalysis === "object") {
-                  missingAnalysis = [missingAnalysis];
-                } else {
-                  throw new Error("Missing tasks analysis is not an array or object");
-                }
-              }
-
-              // Add the missing analyses to the main analysis array
-              console.log(chalk.green(`Successfully analyzed ${missingAnalysis.length} missing tasks`));
-              complexityAnalysis = [...complexityAnalysis, ...missingAnalysis];
-
-              // Re-check for missing tasks
-              const updatedAnalysisTaskIds = complexityAnalysis.map((a) => a.taskId);
-              const stillMissingTaskIds = taskIds.filter((id) => !updatedAnalysisTaskIds.includes(id));
-
-              if (stillMissingTaskIds.length > 0) {
-                console.log(
-                  chalk.yellow(`Warning: Still missing analysis for ${stillMissingTaskIds.length} tasks: ${stillMissingTaskIds.join(", ")}`)
-                );
-              } else {
-                console.log(chalk.green(`All tasks now have complexity analysis!`));
-              }
-            } catch (error) {
-              console.error(chalk.red(`Error analyzing missing tasks: ${error.message}`));
-              console.log(chalk.yellow(`Continuing with partial analysis...`));
-            }
-          } catch (error) {
-            console.error(chalk.red(`Error during retry for missing tasks: ${error.message}`));
-            console.log(chalk.yellow(`Continuing with partial analysis...`));
-          }
-        }
-      } catch (error) {
-        console.error(chalk.red(`Failed to parse LLM response as JSON: ${error.message}`));
-        if (CONFIG.debug) {
-          console.debug(chalk.gray(`Raw response: ${fullResponse}`));
-        }
-        throw new Error("Invalid response format from LLM. Expected JSON.");
-      }
-
-      // Create the final report
-      const report = {
-        meta: {
-          generatedAt: new Date().toISOString(),
-          tasksAnalyzed: tasksData.tasks.length,
-          thresholdScore: thresholdScore,
-          projectName: tasksData.meta?.projectName || "Your Project Name",
-          usedResearch: useResearch,
-        },
-        complexityAnalysis: complexityAnalysis,
-      };
-
-      // Write the report to file
-      console.log(chalk.blue(`Writing complexity report to ${outputPath}...`));
-      writeJSON(outputPath, report);
-
-      console.log(chalk.green(`Task complexity analysis complete. Report written to ${outputPath}`));
-
-      // Display a summary of findings
-      const highComplexity = complexityAnalysis.filter((t) => t.complexityScore >= 8).length;
-      const mediumComplexity = complexityAnalysis.filter((t) => t.complexityScore >= 5 && t.complexityScore < 8).length;
-      const lowComplexity = complexityAnalysis.filter((t) => t.complexityScore < 5).length;
-      const totalAnalyzed = complexityAnalysis.length;
-
-      console.log("\nComplexity Analysis Summary:");
-      console.log("----------------------------");
-      console.log(`Tasks in input file: ${tasksData.tasks.length}`);
-      console.log(`Tasks successfully analyzed: ${totalAnalyzed}`);
-      console.log(`High complexity tasks: ${highComplexity}`);
-      console.log(`Medium complexity tasks: ${mediumComplexity}`);
-      console.log(`Low complexity tasks: ${lowComplexity}`);
-      console.log(`Sum verification: ${highComplexity + mediumComplexity + lowComplexity} (should equal ${totalAnalyzed})`);
-      console.log(`Research-backed analysis: ${useResearch ? "Yes" : "No"}`);
-      console.log(`\nSee ${outputPath} for the full report and expansion commands.`);
-    } catch (error) {
-      if (streamingInterval) clearInterval(streamingInterval);
-      stopLoadingIndicator(loadingIndicator);
-      throw error;
-    }
+    // Stop loading indicator before returning
+    stopLoadingIndicator(loadingIndicator);
+    return complexityData;
   } catch (error) {
-    console.error(chalk.red(`Error analyzing task complexity: ${error.message}`));
-    process.exit(1);
+    if (streamingInterval) clearInterval(streamingInterval);
+    stopLoadingIndicator(loadingIndicator);
+    throw error;
   }
 }
 
-/**
- * Find the next pending task based on dependencies
- * @param {Object[]} tasks - The array of tasks
- * @returns {Object|null} The next task to work on or null if no eligible tasks
- */
-function findNextTask(tasks) {
-  // Get all completed task IDs
-  const completedTaskIds = new Set(tasks.filter((t) => t.status === "done" || t.status === "completed").map((t) => t.id));
+// Helper function to use Gemini for complexity analysis
+async function useGeminiForComplexityAnalysis(prompt) {
+  try {
+    const result = await geminiModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        maxOutputTokens: parseInt(process.env.MAX_TOKENS || CONFIG.maxTokens),
+        temperature: CONFIG.temperature,
+      },
+    });
 
-  // Filter for pending tasks whose dependencies are all satisfied
-  const eligibleTasks = tasks.filter(
-    (task) =>
-      (task.status === "pending" || task.status === "in-progress") &&
-      task.dependencies && // Make sure dependencies array exists
-      task.dependencies.every((depId) => completedTaskIds.has(depId))
-  );
-
-  if (eligibleTasks.length === 0) {
-    return null;
+    const response = result.response.text();
+    console.log(chalk.green("Successfully generated complexity analysis with Gemini"));
+    return response;
+  } catch (error) {
+    console.error(chalk.red("Error analyzing task complexity with Gemini:"), error.message);
+    throw error;
   }
-
-  // Sort eligible tasks by:
-  // 1. Priority (high > medium > low)
-  // 2. Dependencies count (fewer dependencies first)
-  // 3. ID (lower ID first)
-  const priorityValues = { high: 3, medium: 2, low: 1 };
-
-  const nextTask = eligibleTasks.sort((a, b) => {
-    // Sort by priority first
-    const priorityA = priorityValues[a.priority || "medium"] || 2;
-    const priorityB = priorityValues[b.priority || "medium"] || 2;
-
-    if (priorityB !== priorityA) {
-      return priorityB - priorityA; // Higher priority first
-    }
-
-    // If priority is the same, sort by dependency count
-    if (a.dependencies && b.dependencies && a.dependencies.length !== b.dependencies.length) {
-      return a.dependencies.length - b.dependencies.length; // Fewer dependencies first
-    }
-
-    // If dependency count is the same, sort by ID
-    return a.id - b.id; // Lower ID first
-  })[0]; // Return the first (highest priority) task
-
-  return nextTask;
 }
 
 /**
@@ -2570,6 +2135,112 @@ async function removeSubtask(tasksPath, subtaskId, convertToTask = false, genera
   }
 }
 
+/**
+ * Find the next pending task based on dependencies
+ * @param {Object[]} tasks - The array of tasks
+ * @returns {Object|null} The next task to work on or null if no eligible tasks
+ */
+function findNextTask(tasks) {
+  // Get all completed task IDs
+  const completedTaskIds = new Set(tasks.filter((t) => t.status === "done" || t.status === "completed").map((t) => t.id));
+
+  // Filter for pending tasks whose dependencies are all satisfied
+  const eligibleTasks = tasks.filter(
+    (task) =>
+      (task.status === "pending" || task.status === "in-progress") &&
+      task.dependencies && // Make sure dependencies array exists
+      task.dependencies.every((depId) => completedTaskIds.has(depId))
+  );
+
+  if (eligibleTasks.length === 0) {
+    return null;
+  }
+
+  // Sort eligible tasks by:
+  // 1. Priority (high > medium > low)
+  // 2. Dependencies count (fewer dependencies first)
+  // 3. ID (lower ID first)
+  const priorityValues = { high: 3, medium: 2, low: 1 };
+
+  const nextTask = eligibleTasks.sort((a, b) => {
+    // Sort by priority first
+    const priorityA = priorityValues[a.priority || "medium"] || 2;
+    const priorityB = priorityValues[b.priority || "medium"] || 2;
+
+    if (priorityB !== priorityA) {
+      return priorityB - priorityA; // Higher priority first
+    }
+
+    // If priority is the same, sort by dependency count
+    if (a.dependencies && b.dependencies && a.dependencies.length !== b.dependencies.length) {
+      return a.dependencies.length - b.dependencies.length; // Fewer dependencies first
+    }
+
+    // If dependency count is the same, sort by ID
+    return a.id - b.id; // Lower ID first
+  })[0]; // Return the first (highest priority) task
+
+  return nextTask;
+}
+
+/**
+ * Parse and validate the complexity analysis response
+ * @param {string} response - The raw response from the AI
+ * @returns {Object} Parsed and validated complexity data
+ */
+function parseComplexityResponse(response) {
+  try {
+    // Try to parse the response as JSON
+    let complexityData;
+    try {
+      complexityData = JSON.parse(response);
+    } catch (error) {
+      // If direct parsing fails, try to extract JSON from the response
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        throw new Error("Could not find valid JSON in response");
+      }
+      complexityData = JSON.parse(jsonMatch[0]);
+    }
+
+    // Validate the structure
+    if (!Array.isArray(complexityData)) {
+      throw new Error("Response is not an array");
+    }
+
+    // Validate each task analysis
+    complexityData.forEach((analysis, index) => {
+      if (!analysis.taskId || !analysis.taskTitle || !analysis.complexityScore) {
+        throw new Error(`Missing required fields in analysis at index ${index}`);
+      }
+
+      // Ensure complexity score is within valid range
+      analysis.complexityScore = Math.max(1, Math.min(10, analysis.complexityScore));
+
+      // Set default values for optional fields if missing
+      analysis.recommendedSubtasks = analysis.recommendedSubtasks || Math.ceil(analysis.complexityScore / 2);
+      analysis.expansionPrompt = analysis.expansionPrompt || `Break down task ${analysis.taskId} into ${analysis.recommendedSubtasks} subtasks`;
+      analysis.reasoning = analysis.reasoning || "No specific reasoning provided";
+    });
+
+    // Create the final report structure
+    const report = {
+      timestamp: new Date().toISOString(),
+      complexityAnalysis: complexityData,
+      summary: {
+        totalTasks: complexityData.length,
+        averageComplexity: complexityData.reduce((sum, task) => sum + task.complexityScore, 0) / complexityData.length,
+        highComplexityTasks: complexityData.filter((task) => task.complexityScore >= 8).length,
+      },
+    };
+
+    return report;
+  } catch (error) {
+    log("error", `Error parsing complexity response: ${error.message}`);
+    throw error;
+  }
+}
+
 // Export task manager functions
 export {
   parsePRD,
@@ -2585,5 +2256,4 @@ export {
   addSubtask,
   removeSubtask,
   findNextTask,
-  analyzeTaskComplexity,
 };

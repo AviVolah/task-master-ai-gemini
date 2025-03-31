@@ -6,9 +6,13 @@
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
+import dotenv from "dotenv";
 
-// Configuration and constants
-const CONFIG = {
+// Load environment variables from .env file
+dotenv.config();
+
+// Configuration object
+export const CONFIG = {
   model: process.env.MODEL || "gemini-1.5-pro",
   maxTokens: parseInt(process.env.MAX_TOKENS || "4000"),
   temperature: parseFloat(process.env.TEMPERATURE || "0.7"),
@@ -16,8 +20,8 @@ const CONFIG = {
   logLevel: process.env.LOG_LEVEL || "info",
   defaultSubtasks: parseInt(process.env.DEFAULT_SUBTASKS || "3"),
   defaultPriority: process.env.DEFAULT_PRIORITY || "medium",
-  projectName: process.env.PROJECT_NAME || "Task Master",
-  projectVersion: "1.5.0", // Hardcoded version - ALWAYS use this value, ignore environment variable
+  projectName: process.env.PROJECT_NAME || "MCP SaaS MVP",
+  projectVersion: process.env.PROJECT_VERSION || "1.0.0",
 };
 
 // Set up logging based on log level
@@ -323,7 +327,6 @@ function detectCamelCaseFlags(args) {
 
 // Export all utility functions and configuration
 export {
-  CONFIG,
   LOG_LEVELS,
   log,
   readJSON,
