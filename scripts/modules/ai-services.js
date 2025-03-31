@@ -5,24 +5,19 @@
 
 // NOTE/TODO: Include the beta header output-128k-2025-02-19 in your API request to increase the maximum output token length to 128k tokens for Claude 3.7 Sonnet.
 
-import { Anthropic } from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
-import dotenv from 'dotenv';
-import { CONFIG, log, sanitizePrompt } from './utils.js';
-import { startLoadingIndicator, stopLoadingIndicator } from './ui.js';
-import chalk from 'chalk';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
+import dotenv from "dotenv";
+import { CONFIG, log, sanitizePrompt } from "./utils.js";
+import { startLoadingIndicator, stopLoadingIndicator } from "./ui.js";
+import chalk from "chalk";
 
 // Load environment variables
 dotenv.config();
 
-// Configure Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  // Add beta header for 128k token output
-  defaultHeaders: {
-    'anthropic-beta': 'output-128k-2025-02-19'
-  }
-});
+// Configure Google Gemini client
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const model = genAI.getGenerativeModel({ model: CONFIG.model });
 
 // Lazy-loaded Perplexity client
 let perplexity = null;
@@ -38,125 +33,102 @@ function getPerplexityClient() {
     }
     perplexity = new OpenAI({
       apiKey: process.env.PERPLEXITY_API_KEY,
-      baseURL: 'https://api.perplexity.ai',
+      baseURL: "https://api.perplexity.ai",
     });
   }
   return perplexity;
 }
 
 /**
- * Handle Claude API errors with user-friendly messages
- * @param {Error} error - The error from Claude API
+ * Handle Gemini API errors with user-friendly messages
+ * @param {Error} error - The error from Gemini API
  * @returns {string} User-friendly error message
  */
-function handleClaudeError(error) {
+function handleGeminiError(error) {
   // Check if it's a structured error response
-  if (error.type === 'error' && error.error) {
-    switch (error.error.type) {
-      case 'overloaded_error':
-        return 'Claude is currently experiencing high demand and is overloaded. Please wait a few minutes and try again.';
-      case 'rate_limit_error':
-        return 'You have exceeded the rate limit. Please wait a few minutes before making more requests.';
-      case 'invalid_request_error':
-        return 'There was an issue with the request format. If this persists, please report it as a bug.';
+  if (error.response?.error) {
+    switch (error.response.error.code) {
+      case "RESOURCE_EXHAUSTED":
+        return "You have exceeded your quota. Please check your plan and billing details.";
+      case "PERMISSION_DENIED":
+        return "Invalid API key or insufficient permissions. Please check your API key.";
+      case "INVALID_ARGUMENT":
+        return "There was an issue with the request format. If this persists, please report it as a bug.";
       default:
-        return `Claude API error: ${error.error.message}`;
+        return `Gemini API error: ${error.response.error.message}`;
     }
   }
-  
+
   // Check for network/timeout errors
-  if (error.message?.toLowerCase().includes('timeout')) {
-    return 'The request to Claude timed out. Please try again.';
+  if (error.message?.toLowerCase().includes("timeout")) {
+    return "The request to Gemini timed out. Please try again.";
   }
-  if (error.message?.toLowerCase().includes('network')) {
-    return 'There was a network error connecting to Claude. Please check your internet connection and try again.';
+  if (error.message?.toLowerCase().includes("network")) {
+    return "There was a network error connecting to Gemini. Please check your internet connection and try again.";
   }
-  
+
   // Default error message
-  return `Error communicating with Claude: ${error.message}`;
+  return `Error communicating with Gemini: ${error.message}`;
 }
 
 /**
- * Call Claude to generate tasks from a PRD
+ * Call Gemini API to process PRD content
  * @param {string} prdContent - PRD content
  * @param {string} prdPath - Path to the PRD file
  * @param {number} numTasks - Number of tasks to generate
- * @param {number} retryCount - Retry count
- * @returns {Object} Claude's response
+ * @param {number} retryCount - Number of retries attempted
+ * @returns {Object} Processed response
  */
-async function callClaude(prdContent, prdPath, numTasks, retryCount = 0) {
+async function callGemini(prdContent, prdPath, numTasks, retryCount = 0) {
   try {
-    log('info', 'Calling Claude...');
+    const systemPrompt = `You are an expert software architect and project manager. 
+    Your task is to break down a Product Requirements Document (PRD) into ${numTasks} well-defined tasks. 
+    Each task should be specific, actionable, and include clear implementation details.
     
-    // Build the system prompt
-    const systemPrompt = `You are an AI assistant helping to break down a Product Requirements Document (PRD) into a set of sequential development tasks. 
-Your goal is to create ${numTasks} well-structured, actionable development tasks based on the PRD provided.
-
-Each task should follow this JSON structure:
-{
-  "id": number,
-  "title": string,
-  "description": string,
-  "status": "pending",
-  "dependencies": number[] (IDs of tasks this depends on),
-  "priority": "high" | "medium" | "low",
-  "details": string (implementation details),
-  "testStrategy": string (validation approach)
-}
-
-Guidelines:
-1. Create exactly ${numTasks} tasks, numbered from 1 to ${numTasks}
-2. Each task should be atomic and focused on a single responsibility
-3. Order tasks logically - consider dependencies and implementation sequence
-4. Early tasks should focus on setup, core functionality first, then advanced features
-5. Include clear validation/testing approach for each task
-6. Set appropriate dependency IDs (a task can only depend on tasks with lower IDs)
-7. Assign priority (high/medium/low) based on criticality and dependency order
-8. Include detailed implementation guidance in the "details" field
-
-Expected output format:
-{
-  "tasks": [
+    Return the response as a JSON object with the following structure:
     {
-      "id": 1,
-      "title": "Setup Project Repository",
-      "description": "...",
-      ...
-    },
-    ...
-  ],
-  "metadata": {
-    "projectName": "PRD Implementation",
-    "totalTasks": ${numTasks},
-    "sourceFile": "${prdPath}",
-    "generatedAt": "YYYY-MM-DD"
-  }
-}
-
-Important: Your response must be valid JSON only, with no additional explanation or comments.`;
+      "tasks": [
+        {
+          "id": number,
+          "title": string,
+          "description": string,
+          "status": "pending",
+          "priority": "high" | "medium" | "low",
+          "dependencies": number[],
+          "details": string,
+          "testStrategy": string
+        }
+      ],
+      "metadata": {
+        "projectName": string,
+        "totalTasks": number,
+        "sourceFile": string,
+        "generatedAt": string
+      }
+    }`;
 
     // Use streaming request to handle large responses and show progress
     return await handleStreamingRequest(prdContent, prdPath, numTasks, CONFIG.maxTokens, systemPrompt);
   } catch (error) {
     // Get user-friendly error message
-    const userMessage = handleClaudeError(error);
-    log('error', userMessage);
+    const userMessage = handleGeminiError(error);
+    log("error", userMessage);
 
     // Retry logic for certain errors
-    if (retryCount < 2 && (
-      error.error?.type === 'overloaded_error' || 
-      error.error?.type === 'rate_limit_error' ||
-      error.message?.toLowerCase().includes('timeout') ||
-      error.message?.toLowerCase().includes('network')
-    )) {
+    if (
+      retryCount < 2 &&
+      (error.response?.error?.code === "RESOURCE_EXHAUSTED" ||
+        error.message?.toLowerCase().includes("timeout") ||
+        error.message?.toLowerCase().includes("network"))
+    ) {
       const waitTime = (retryCount + 1) * 5000; // 5s, then 10s
-      log('info', `Waiting ${waitTime/1000} seconds before retry ${retryCount + 1}/2...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      return await callClaude(prdContent, prdPath, numTasks, retryCount + 1);
+      log("info", `Waiting ${waitTime / 1000} seconds before retry ${retryCount + 1}/2...`);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+      return await callGemini(prdContent, prdPath, numTasks, retryCount + 1);
     } else {
       console.error(chalk.red(userMessage));
       if (CONFIG.debug) {
-        log('debug', 'Full error:', error);
+        log("debug", "Full error:", error);
       }
       throw new Error(userMessage);
     }
@@ -164,131 +136,140 @@ Important: Your response must be valid JSON only, with no additional explanation
 }
 
 /**
- * Handle streaming request to Claude
+ * Handle streaming request to Gemini
  * @param {string} prdContent - PRD content
  * @param {string} prdPath - Path to the PRD file
  * @param {number} numTasks - Number of tasks to generate
  * @param {number} maxTokens - Maximum tokens
  * @param {string} systemPrompt - System prompt
- * @returns {Object} Claude's response
+ * @returns {Object} Gemini's response
  */
 async function handleStreamingRequest(prdContent, prdPath, numTasks, maxTokens, systemPrompt) {
-  const loadingIndicator = startLoadingIndicator('Generating tasks from PRD...');
-  let responseText = '';
+  const loadingIndicator = startLoadingIndicator("Generating tasks from PRD...");
+  let responseText = "";
   let streamingInterval = null;
-  
+
   try {
     // Use streaming for handling large responses
-    const stream = await anthropic.messages.create({
-      model: CONFIG.model,
-      max_tokens: maxTokens,
-      temperature: CONFIG.temperature,
-      system: systemPrompt,
-      messages: [
+    const prompt = `${systemPrompt}\n\nHere's the Product Requirements Document (PRD) to break down into ${numTasks} tasks:\n\n${prdContent}`;
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: CONFIG.temperature,
+      },
+      safetySettings: [
         {
-          role: 'user',
-          content: `Here's the Product Requirements Document (PRD) to break down into ${numTasks} tasks:\n\n${prdContent}`
-        }
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE",
+        },
       ],
-      stream: true
     });
-    
+
     // Update loading indicator to show streaming progress
     let dotCount = 0;
-    const readline = await import('readline');
+    const readline = await import("readline");
     streamingInterval = setInterval(() => {
       readline.cursorTo(process.stdout, 0);
-      process.stdout.write(`Receiving streaming response from Claude${'.'.repeat(dotCount)}`);
+      process.stdout.write(`Receiving response from Gemini${".".repeat(dotCount)}`);
       dotCount = (dotCount + 1) % 4;
     }, 500);
-    
-    // Process the stream
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.text) {
-        responseText += chunk.delta.text;
-      }
-    }
-    
+
+    responseText = result.response.text();
+
     if (streamingInterval) clearInterval(streamingInterval);
     stopLoadingIndicator(loadingIndicator);
-    
-    log('info', "Completed streaming response from Claude API!");
-    
-    return processClaudeResponse(responseText, numTasks, 0, prdContent, prdPath);
+
+    log("info", "Completed response from Gemini API!");
+
+    return processGeminiResponse(responseText, numTasks, 0, prdContent, prdPath);
   } catch (error) {
     if (streamingInterval) clearInterval(streamingInterval);
     stopLoadingIndicator(loadingIndicator);
-    
+
     // Get user-friendly error message
-    const userMessage = handleClaudeError(error);
-    log('error', userMessage);
+    const userMessage = handleGeminiError(error);
+    log("error", userMessage);
     console.error(chalk.red(userMessage));
-    
+
     if (CONFIG.debug) {
-      log('debug', 'Full error:', error);
+      log("debug", "Full error:", error);
     }
-    
+
     throw new Error(userMessage);
   }
 }
 
 /**
- * Process Claude's response
- * @param {string} textContent - Text content from Claude
+ * Process Gemini's response
+ * @param {string} textContent - Text content from Gemini
  * @param {number} numTasks - Number of tasks
  * @param {number} retryCount - Retry count
  * @param {string} prdContent - PRD content
  * @param {string} prdPath - Path to the PRD file
  * @returns {Object} Processed response
  */
-function processClaudeResponse(textContent, numTasks, retryCount, prdContent, prdPath) {
+function processGeminiResponse(textContent, numTasks, retryCount, prdContent, prdPath) {
   try {
     // Attempt to parse the JSON response
-    let jsonStart = textContent.indexOf('{');
-    let jsonEnd = textContent.lastIndexOf('}');
-    
+    let jsonStart = textContent.indexOf("{");
+    let jsonEnd = textContent.lastIndexOf("}");
+
     if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("Could not find valid JSON in Claude's response");
+      throw new Error("Could not find valid JSON in Gemini's response");
     }
-    
+
     let jsonContent = textContent.substring(jsonStart, jsonEnd + 1);
     let parsedData = JSON.parse(jsonContent);
-    
+
     // Validate the structure of the generated tasks
     if (!parsedData.tasks || !Array.isArray(parsedData.tasks)) {
-      throw new Error("Claude's response does not contain a valid tasks array");
+      throw new Error("Gemini's response does not contain a valid tasks array");
     }
-    
+
     // Ensure we have the correct number of tasks
     if (parsedData.tasks.length !== numTasks) {
-      log('warn', `Expected ${numTasks} tasks, but received ${parsedData.tasks.length}`);
+      log("warn", `Expected ${numTasks} tasks, but received ${parsedData.tasks.length}`);
     }
-    
+
     // Add metadata if missing
     if (!parsedData.metadata) {
       parsedData.metadata = {
         projectName: "PRD Implementation",
         totalTasks: parsedData.tasks.length,
         sourceFile: prdPath,
-        generatedAt: new Date().toISOString().split('T')[0]
+        generatedAt: new Date().toISOString().split("T")[0],
       };
     }
-    
+
     return parsedData;
   } catch (error) {
-    log('error', "Error processing Claude's response:", error.message);
-    
+    log("error", "Error processing Gemini's response:", error.message);
+
     // Retry logic
     if (retryCount < 2) {
-      log('info', `Retrying to parse response (${retryCount + 1}/2)...`);
-      
-      // Try again with Claude for a cleaner response
+      log("info", `Retrying to parse response (${retryCount + 1}/2)...`);
+
+      // Try again with Gemini for a cleaner response
       if (retryCount === 1) {
-        log('info', "Calling Claude again for a cleaner response...");
-        return callClaude(prdContent, prdPath, numTasks, retryCount + 1);
+        log("info", "Calling Gemini again for a cleaner response...");
+        return callGemini(prdContent, prdPath, numTasks, retryCount + 1);
       }
-      
-      return processClaudeResponse(textContent, numTasks, retryCount + 1, prdContent, prdPath);
+
+      return processGeminiResponse(textContent, numTasks, retryCount + 1, prdContent, prdPath);
     } else {
       throw error;
     }
@@ -303,14 +284,14 @@ function processClaudeResponse(textContent, numTasks, retryCount, prdContent, pr
  * @param {string} additionalContext - Additional context
  * @returns {Array} Generated subtasks
  */
-async function generateSubtasks(task, numSubtasks, nextSubtaskId, additionalContext = '') {
+async function generateSubtasks(task, numSubtasks, nextSubtaskId, additionalContext = "") {
   try {
-    log('info', `Generating ${numSubtasks} subtasks for task ${task.id}: ${task.title}`);
-    
+    log("info", `Generating ${numSubtasks} subtasks for task ${task.id}: ${task.title}`);
+
     const loadingIndicator = startLoadingIndicator(`Generating subtasks for task ${task.id}...`);
     let streamingInterval = null;
-    let responseText = '';
-    
+    let responseText = "";
+
     const systemPrompt = `You are an AI assistant helping with task breakdown for software development. 
 You need to break down a high-level task into ${numSubtasks} specific subtasks that can be implemented one by one.
 
@@ -330,15 +311,14 @@ For each subtask, provide:
 
 Each subtask should be implementable in a focused coding session.`;
 
-    const contextPrompt = additionalContext ? 
-      `\n\nAdditional context to consider: ${additionalContext}` : '';
-    
+    const contextPrompt = additionalContext ? `\n\nAdditional context to consider: ${additionalContext}` : "";
+
     const userPrompt = `Please break down this task into ${numSubtasks} specific, actionable subtasks:
 
 Task ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
-Current details: ${task.details || 'None provided'}
+Current details: ${task.details || "None provided"}
 ${contextPrompt}
 
 Return exactly ${numSubtasks} subtasks with the following JSON structure:
@@ -358,40 +338,40 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
     try {
       // Update loading indicator to show streaming progress
       let dotCount = 0;
-      const readline = await import('readline');
+      const readline = await import("readline");
       streamingInterval = setInterval(() => {
         readline.cursorTo(process.stdout, 0);
-        process.stdout.write(`Generating subtasks for task ${task.id}${'.'.repeat(dotCount)}`);
+        process.stdout.write(`Generating subtasks for task ${task.id}${".".repeat(dotCount)}`);
         dotCount = (dotCount + 1) % 4;
       }, 500);
-      
+
       // Use streaming API call
-      const stream = await anthropic.messages.create({
+      const stream = await genAI.messages.create({
         model: CONFIG.model,
         max_tokens: CONFIG.maxTokens,
         temperature: CONFIG.temperature,
         system: systemPrompt,
         messages: [
           {
-            role: 'user',
-            content: userPrompt
-          }
+            role: "user",
+            content: userPrompt,
+          },
         ],
-        stream: true
+        stream: true,
       });
-      
+
       // Process the stream
       for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.text) {
+        if (chunk.type === "content_block_delta" && chunk.delta.text) {
           responseText += chunk.delta.text;
         }
       }
-      
+
       if (streamingInterval) clearInterval(streamingInterval);
       stopLoadingIndicator(loadingIndicator);
-      
-      log('info', `Completed generating subtasks for task ${task.id}`);
-      
+
+      log("info", `Completed generating subtasks for task ${task.id}`);
+
       return parseSubtasksFromText(responseText, nextSubtaskId, numSubtasks, task.id);
     } catch (error) {
       if (streamingInterval) clearInterval(streamingInterval);
@@ -399,7 +379,7 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
       throw error;
     }
   } catch (error) {
-    log('error', `Error generating subtasks: ${error.message}`);
+    log("error", `Error generating subtasks: ${error.message}`);
     throw error;
   }
 }
@@ -412,36 +392,38 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
  * @param {string} additionalContext - Additional context
  * @returns {Array} Generated subtasks
  */
-async function generateSubtasksWithPerplexity(task, numSubtasks = 3, nextSubtaskId = 1, additionalContext = '') {
+async function generateSubtasksWithPerplexity(task, numSubtasks = 3, nextSubtaskId = 1, additionalContext = "") {
   try {
     // First, perform research to get context
-    log('info', `Researching context for task ${task.id}: ${task.title}`);
+    log("info", `Researching context for task ${task.id}: ${task.title}`);
     const perplexityClient = getPerplexityClient();
-    
-    const PERPLEXITY_MODEL = process.env.PERPLEXITY_MODEL || 'sonar-pro';
-    const researchLoadingIndicator = startLoadingIndicator('Researching best practices with Perplexity AI...');
-    
+
+    const PERPLEXITY_MODEL = process.env.PERPLEXITY_MODEL || "sonar-pro";
+    const researchLoadingIndicator = startLoadingIndicator("Researching best practices with Perplexity AI...");
+
     // Formulate research query based on task
     const researchQuery = `I need to implement "${task.title}" which involves: "${task.description}". 
 What are current best practices, libraries, design patterns, and implementation approaches? 
 Include concrete code examples and technical considerations where relevant.`;
-    
+
     // Query Perplexity for research
     const researchResponse = await perplexityClient.chat.completions.create({
       model: PERPLEXITY_MODEL,
-      messages: [{
-        role: 'user',
-        content: researchQuery
-      }],
-      temperature: 0.1 // Lower temperature for more factual responses
+      messages: [
+        {
+          role: "user",
+          content: researchQuery,
+        },
+      ],
+      temperature: 0.1, // Lower temperature for more factual responses
     });
-    
+
     const researchResult = researchResponse.choices[0].message.content;
-    
+
     stopLoadingIndicator(researchLoadingIndicator);
-    log('info', 'Research completed, now generating subtasks with additional context');
-    
-    // Use the research result as additional context for Claude to generate subtasks
+    log("info", "Research completed, now generating subtasks with additional context");
+
+    // Use the research result as additional context for Gemini to generate subtasks
     const combinedContext = `
 RESEARCH FINDINGS:
 ${researchResult}
@@ -449,12 +431,12 @@ ${researchResult}
 ADDITIONAL CONTEXT PROVIDED BY USER:
 ${additionalContext || "No additional context provided."}
 `;
-    
-    // Now generate subtasks with Claude
+
+    // Now generate subtasks with Gemini
     const loadingIndicator = startLoadingIndicator(`Generating research-backed subtasks for task ${task.id}...`);
     let streamingInterval = null;
-    let responseText = '';
-    
+    let responseText = "";
+
     const systemPrompt = `You are an AI assistant helping with task breakdown for software development.
 You need to break down a high-level task into ${numSubtasks} specific subtasks that can be implemented one by one.
 
@@ -482,7 +464,7 @@ Each subtask should be implementable in a focused coding session.`;
 Task ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
-Current details: ${task.details || 'None provided'}
+Current details: ${task.details || "None provided"}
 
 ${combinedContext}
 
@@ -503,40 +485,40 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
     try {
       // Update loading indicator to show streaming progress
       let dotCount = 0;
-      const readline = await import('readline');
+      const readline = await import("readline");
       streamingInterval = setInterval(() => {
         readline.cursorTo(process.stdout, 0);
-        process.stdout.write(`Generating research-backed subtasks for task ${task.id}${'.'.repeat(dotCount)}`);
+        process.stdout.write(`Generating research-backed subtasks for task ${task.id}${".".repeat(dotCount)}`);
         dotCount = (dotCount + 1) % 4;
       }, 500);
-      
+
       // Use streaming API call
-      const stream = await anthropic.messages.create({
+      const stream = await genAI.messages.create({
         model: CONFIG.model,
         max_tokens: CONFIG.maxTokens,
         temperature: CONFIG.temperature,
         system: systemPrompt,
         messages: [
           {
-            role: 'user',
-            content: userPrompt
-          }
+            role: "user",
+            content: userPrompt,
+          },
         ],
-        stream: true
+        stream: true,
       });
-      
+
       // Process the stream
       for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.text) {
+        if (chunk.type === "content_block_delta" && chunk.delta.text) {
           responseText += chunk.delta.text;
         }
       }
-      
+
       if (streamingInterval) clearInterval(streamingInterval);
       stopLoadingIndicator(loadingIndicator);
-      
-      log('info', `Completed generating research-backed subtasks for task ${task.id}`);
-      
+
+      log("info", `Completed generating research-backed subtasks for task ${task.id}`);
+
       return parseSubtasksFromText(responseText, nextSubtaskId, numSubtasks, task.id);
     } catch (error) {
       if (streamingInterval) clearInterval(streamingInterval);
@@ -544,13 +526,13 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
       throw error;
     }
   } catch (error) {
-    log('error', `Error generating research-backed subtasks: ${error.message}`);
+    log("error", `Error generating research-backed subtasks: ${error.message}`);
     throw error;
   }
 }
 
 /**
- * Parse subtasks from Claude's response text
+ * Parse subtasks from Gemini's response text
  * @param {string} text - Response text
  * @param {number} startId - Starting subtask ID
  * @param {number} expectedCount - Expected number of subtasks
@@ -560,62 +542,62 @@ Note on dependencies: Subtasks can depend on other subtasks with lower IDs. Use 
 function parseSubtasksFromText(text, startId, expectedCount, parentTaskId) {
   try {
     // Locate JSON array in the text
-    const jsonStartIndex = text.indexOf('[');
-    const jsonEndIndex = text.lastIndexOf(']');
-    
+    const jsonStartIndex = text.indexOf("[");
+    const jsonEndIndex = text.lastIndexOf("]");
+
     if (jsonStartIndex === -1 || jsonEndIndex === -1 || jsonEndIndex < jsonStartIndex) {
       throw new Error("Could not locate valid JSON array in the response");
     }
-    
+
     // Extract and parse the JSON
     const jsonText = text.substring(jsonStartIndex, jsonEndIndex + 1);
     let subtasks = JSON.parse(jsonText);
-    
+
     // Validate
     if (!Array.isArray(subtasks)) {
       throw new Error("Parsed content is not an array");
     }
-    
+
     // Log warning if count doesn't match expected
     if (subtasks.length !== expectedCount) {
-      log('warn', `Expected ${expectedCount} subtasks, but parsed ${subtasks.length}`);
+      log("warn", `Expected ${expectedCount} subtasks, but parsed ${subtasks.length}`);
     }
-    
+
     // Normalize subtask IDs if they don't match
     subtasks = subtasks.map((subtask, index) => {
       // Assign the correct ID if it doesn't match
       if (subtask.id !== startId + index) {
-        log('warn', `Correcting subtask ID from ${subtask.id} to ${startId + index}`);
+        log("warn", `Correcting subtask ID from ${subtask.id} to ${startId + index}`);
         subtask.id = startId + index;
       }
-      
+
       // Convert dependencies to numbers if they are strings
       if (subtask.dependencies && Array.isArray(subtask.dependencies)) {
-        subtask.dependencies = subtask.dependencies.map(dep => {
-          return typeof dep === 'string' ? parseInt(dep, 10) : dep;
+        subtask.dependencies = subtask.dependencies.map((dep) => {
+          return typeof dep === "string" ? parseInt(dep, 10) : dep;
         });
       } else {
         subtask.dependencies = [];
       }
-      
+
       // Ensure status is 'pending'
-      subtask.status = 'pending';
-      
+      subtask.status = "pending";
+
       // Add parentTaskId
       subtask.parentTaskId = parentTaskId;
-      
+
       return subtask;
     });
-    
+
     return subtasks;
   } catch (error) {
-    log('error', `Error parsing subtasks: ${error.message}`);
-    
+    log("error", `Error parsing subtasks: ${error.message}`);
+
     // Create a fallback array of empty subtasks if parsing fails
-    log('warn', 'Creating fallback subtasks');
-    
+    log("warn", "Creating fallback subtasks");
+
     const fallbackSubtasks = [];
-    
+
     for (let i = 0; i < expectedCount; i++) {
       fallbackSubtasks.push({
         id: startId + i,
@@ -623,11 +605,11 @@ function parseSubtasksFromText(text, startId, expectedCount, parentTaskId) {
         description: "Auto-generated fallback subtask",
         dependencies: [],
         details: "This is a fallback subtask created because parsing failed. Please update with real details.",
-        status: 'pending',
-        parentTaskId: parentTaskId
+        status: "pending",
+        parentTaskId: parentTaskId,
       });
     }
-    
+
     return fallbackSubtasks;
   }
 }
@@ -640,14 +622,18 @@ function parseSubtasksFromText(text, startId, expectedCount, parentTaskId) {
 function generateComplexityAnalysisPrompt(tasksData) {
   return `Analyze the complexity of the following tasks and provide recommendations for subtask breakdown:
 
-${tasksData.tasks.map(task => `
+${tasksData.tasks
+  .map(
+    (task) => `
 Task ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
 Details: ${task.details}
 Dependencies: ${JSON.stringify(task.dependencies || [])}
-Priority: ${task.priority || 'medium'}
-`).join('\n---\n')}
+Priority: ${task.priority || "medium"}
+`
+  )
+  .join("\n---\n")}
 
 Analyze each task and return a JSON array with the following structure for each task:
 [
@@ -669,12 +655,12 @@ IMPORTANT: Make sure to include an analysis for EVERY task listed above, with th
 // Export AI service functions
 export {
   getPerplexityClient,
-  callClaude,
+  callGemini,
   handleStreamingRequest,
-  processClaudeResponse,
+  processGeminiResponse,
   generateSubtasks,
   generateSubtasksWithPerplexity,
   parseSubtasksFromText,
   generateComplexityAnalysisPrompt,
-  handleClaudeError
-}; 
+  handleGeminiError,
+};

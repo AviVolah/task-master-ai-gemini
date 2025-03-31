@@ -3,21 +3,21 @@
  * Utility functions for the Task Master CLI
  */
 
-import fs from 'fs';
-import path from 'path';
-import chalk from 'chalk';
+import fs from "fs";
+import path from "path";
+import chalk from "chalk";
 
 // Configuration and constants
 const CONFIG = {
-  model: process.env.MODEL || 'claude-3-7-sonnet-20250219',
-  maxTokens: parseInt(process.env.MAX_TOKENS || '4000'),
-  temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
+  model: process.env.MODEL || "gemini-1.5-pro",
+  maxTokens: parseInt(process.env.MAX_TOKENS || "4000"),
+  temperature: parseFloat(process.env.TEMPERATURE || "0.7"),
   debug: process.env.DEBUG === "true",
   logLevel: process.env.LOG_LEVEL || "info",
   defaultSubtasks: parseInt(process.env.DEFAULT_SUBTASKS || "3"),
   defaultPriority: process.env.DEFAULT_PRIORITY || "medium",
   projectName: process.env.PROJECT_NAME || "Task Master",
-  projectVersion: "1.5.0" // Hardcoded version - ALWAYS use this value, ignore environment variable
+  projectVersion: "1.5.0", // Hardcoded version - ALWAYS use this value, ignore environment variable
 };
 
 // Set up logging based on log level
@@ -25,7 +25,7 @@ const LOG_LEVELS = {
   debug: 0,
   info: 1,
   warn: 2,
-  error: 3
+  error: 3,
 };
 
 /**
@@ -35,16 +35,16 @@ const LOG_LEVELS = {
  */
 function log(level, ...args) {
   const icons = {
-    debug: chalk.gray('🔍'),
-    info: chalk.blue('ℹ️'),
-    warn: chalk.yellow('⚠️'),
-    error: chalk.red('❌'),
-    success: chalk.green('✅')
+    debug: chalk.gray("🔍"),
+    info: chalk.blue("ℹ️"),
+    warn: chalk.yellow("⚠️"),
+    error: chalk.red("❌"),
+    success: chalk.green("✅"),
   };
-  
+
   if (LOG_LEVELS[level] >= LOG_LEVELS[CONFIG.logLevel]) {
-    const icon = icons[level] || '';
-    console.log(`${icon} ${args.join(' ')}`);
+    const icon = icons[level] || "";
+    console.log(`${icon} ${args.join(" ")}`);
   }
 }
 
@@ -55,10 +55,10 @@ function log(level, ...args) {
  */
 function readJSON(filepath) {
   try {
-    const rawData = fs.readFileSync(filepath, 'utf8');
+    const rawData = fs.readFileSync(filepath, "utf8");
     return JSON.parse(rawData);
   } catch (error) {
-    log('error', `Error reading JSON file ${filepath}:`, error.message);
+    log("error", `Error reading JSON file ${filepath}:`, error.message);
     if (CONFIG.debug) {
       console.error(error);
     }
@@ -75,7 +75,7 @@ function writeJSON(filepath, data) {
   try {
     fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
   } catch (error) {
-    log('error', `Error writing JSON file ${filepath}:`, error.message);
+    log("error", `Error writing JSON file ${filepath}:`, error.message);
     if (CONFIG.debug) {
       console.error(error);
     }
@@ -99,15 +99,15 @@ function sanitizePrompt(prompt) {
  */
 function readComplexityReport(customPath = null) {
   try {
-    const reportPath = customPath || path.join(process.cwd(), 'scripts', 'task-complexity-report.json');
+    const reportPath = customPath || path.join(process.cwd(), "scripts", "task-complexity-report.json");
     if (!fs.existsSync(reportPath)) {
       return null;
     }
-    
-    const reportData = fs.readFileSync(reportPath, 'utf8');
+
+    const reportData = fs.readFileSync(reportPath, "utf8");
     return JSON.parse(reportData);
   } catch (error) {
-    log('warn', `Could not read complexity report: ${error.message}`);
+    log("warn", `Could not read complexity report: ${error.message}`);
     return null;
   }
 }
@@ -122,8 +122,8 @@ function findTaskInComplexityReport(report, taskId) {
   if (!report || !report.complexityAnalysis || !Array.isArray(report.complexityAnalysis)) {
     return null;
   }
-  
-  return report.complexityAnalysis.find(task => task.taskId === taskId);
+
+  return report.complexityAnalysis.find((task) => task.taskId === taskId);
 }
 
 /**
@@ -136,21 +136,21 @@ function taskExists(tasks, taskId) {
   if (!taskId || !tasks || !Array.isArray(tasks)) {
     return false;
   }
-  
+
   // Handle both regular task IDs and subtask IDs (e.g., "1.2")
-  if (typeof taskId === 'string' && taskId.includes('.')) {
-    const [parentId, subtaskId] = taskId.split('.').map(id => parseInt(id, 10));
-    const parentTask = tasks.find(t => t.id === parentId);
-    
+  if (typeof taskId === "string" && taskId.includes(".")) {
+    const [parentId, subtaskId] = taskId.split(".").map((id) => parseInt(id, 10));
+    const parentTask = tasks.find((t) => t.id === parentId);
+
     if (!parentTask || !parentTask.subtasks) {
       return false;
     }
-    
-    return parentTask.subtasks.some(st => st.id === subtaskId);
+
+    return parentTask.subtasks.some((st) => st.id === subtaskId);
   }
-  
+
   const id = parseInt(taskId, 10);
-  return tasks.some(t => t.id === id);
+  return tasks.some((t) => t.id === id);
 }
 
 /**
@@ -159,14 +159,14 @@ function taskExists(tasks, taskId) {
  * @returns {string} The formatted task ID
  */
 function formatTaskId(id) {
-  if (typeof id === 'string' && id.includes('.')) {
+  if (typeof id === "string" && id.includes(".")) {
     return id; // Already formatted as a string with a dot (e.g., "1.2")
   }
-  
-  if (typeof id === 'number') {
+
+  if (typeof id === "number") {
     return id.toString();
   }
-  
+
   return id;
 }
 
@@ -180,32 +180,32 @@ function findTaskById(tasks, taskId) {
   if (!taskId || !tasks || !Array.isArray(tasks)) {
     return null;
   }
-  
+
   // Check if it's a subtask ID (e.g., "1.2")
-  if (typeof taskId === 'string' && taskId.includes('.')) {
-    const [parentId, subtaskId] = taskId.split('.').map(id => parseInt(id, 10));
-    const parentTask = tasks.find(t => t.id === parentId);
-    
+  if (typeof taskId === "string" && taskId.includes(".")) {
+    const [parentId, subtaskId] = taskId.split(".").map((id) => parseInt(id, 10));
+    const parentTask = tasks.find((t) => t.id === parentId);
+
     if (!parentTask || !parentTask.subtasks) {
       return null;
     }
-    
-    const subtask = parentTask.subtasks.find(st => st.id === subtaskId);
+
+    const subtask = parentTask.subtasks.find((st) => st.id === subtaskId);
     if (subtask) {
       // Add reference to parent task for context
-      subtask.parentTask = { 
-        id: parentTask.id, 
+      subtask.parentTask = {
+        id: parentTask.id,
         title: parentTask.title,
-        status: parentTask.status
+        status: parentTask.status,
       };
       subtask.isSubtask = true;
     }
-    
+
     return subtask || null;
   }
-  
+
   const id = parseInt(taskId, 10);
-  return tasks.find(t => t.id === id) || null;
+  return tasks.find((t) => t.id === id) || null;
 }
 
 /**
@@ -218,8 +218,8 @@ function truncate(text, maxLength) {
   if (!text || text.length <= maxLength) {
     return text;
   }
-  
-  return text.slice(0, maxLength - 3) + '...';
+
+  return text.slice(0, maxLength - 3) + "...";
 }
 
 /**
@@ -235,19 +235,19 @@ function findCycles(subtaskId, dependencyMap, visited = new Set(), recursionStac
   visited.add(subtaskId);
   recursionStack.add(subtaskId);
   path.push(subtaskId);
-  
+
   const cyclesToBreak = [];
-  
+
   // Get all dependencies of the current subtask
   const dependencies = dependencyMap.get(subtaskId) || [];
-  
+
   // For each dependency
   for (const depId of dependencies) {
     // If not visited, recursively check for cycles
     if (!visited.has(depId)) {
       const cycles = findCycles(depId, dependencyMap, visited, recursionStack, [...path]);
       cyclesToBreak.push(...cycles);
-    } 
+    }
     // If the dependency is in the recursion stack, we found a cycle
     else if (recursionStack.has(depId)) {
       // Find the position of the dependency in the path
@@ -258,10 +258,10 @@ function findCycles(subtaskId, dependencyMap, visited = new Set(), recursionStac
       cyclesToBreak.push(depId);
     }
   }
-  
+
   // Remove the node from recursion stack before returning
   recursionStack.delete(subtaskId);
-  
+
   return cyclesToBreak;
 }
 
@@ -273,21 +273,21 @@ function findCycles(subtaskId, dependencyMap, visited = new Set(), recursionStac
 const toKebabCase = (str) => {
   // Special handling for common acronyms
   const withReplacedAcronyms = str
-    .replace(/ID/g, 'Id')
-    .replace(/API/g, 'Api')
-    .replace(/UI/g, 'Ui')
-    .replace(/URL/g, 'Url')
-    .replace(/URI/g, 'Uri')
-    .replace(/JSON/g, 'Json')
-    .replace(/XML/g, 'Xml')
-    .replace(/HTML/g, 'Html')
-    .replace(/CSS/g, 'Css');
-  
+    .replace(/ID/g, "Id")
+    .replace(/API/g, "Api")
+    .replace(/UI/g, "Ui")
+    .replace(/URL/g, "Url")
+    .replace(/URI/g, "Uri")
+    .replace(/JSON/g, "Json")
+    .replace(/XML/g, "Xml")
+    .replace(/HTML/g, "Html")
+    .replace(/CSS/g, "Css");
+
   // Insert hyphens before capital letters and convert to lowercase
   return withReplacedAcronyms
-    .replace(/([A-Z])/g, '-$1')
+    .replace(/([A-Z])/g, "-$1")
     .toLowerCase()
-    .replace(/^-/, ''); // Remove leading hyphen if present
+    .replace(/^-/, ""); // Remove leading hyphen if present
 };
 
 /**
@@ -298,21 +298,21 @@ const toKebabCase = (str) => {
 function detectCamelCaseFlags(args) {
   const camelCaseFlags = [];
   for (const arg of args) {
-    if (arg.startsWith('--')) {
-      const flagName = arg.split('=')[0].slice(2); // Remove -- and anything after =
-      
+    if (arg.startsWith("--")) {
+      const flagName = arg.split("=")[0].slice(2); // Remove -- and anything after =
+
       // Skip single-word flags - they can't be camelCase
-      if (!flagName.includes('-') && !/[A-Z]/.test(flagName)) {
+      if (!flagName.includes("-") && !/[A-Z]/.test(flagName)) {
         continue;
       }
-      
+
       // Check for camelCase pattern (lowercase followed by uppercase)
       if (/[a-z][A-Z]/.test(flagName)) {
         const kebabVersion = toKebabCase(flagName);
         if (kebabVersion !== flagName) {
-          camelCaseFlags.push({ 
-            original: flagName, 
-            kebabCase: kebabVersion 
+          camelCaseFlags.push({
+            original: flagName,
+            kebabCase: kebabVersion,
           });
         }
       }
@@ -337,5 +337,5 @@ export {
   truncate,
   findCycles,
   toKebabCase,
-  detectCamelCaseFlags
-}; 
+  detectCamelCaseFlags,
+};
