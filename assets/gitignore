@@ -26,4 +26,11 @@ node_modules/
 
 # Task files
 tasks.json
-tasks/ 
+tasks/
+
+# Cursor specific
+.cursor/
+
+# Task Master files
+scripts/
+.windsurfrules
