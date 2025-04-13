@@ -31,7 +31,7 @@ Review guidelines with actual AI agents to verify they can follow the procedures
 
 ## 3. Create Implementation Guidance Generator [done]
 ### Dependencies: 14.5
-### Description: Develop a system that generates detailed implementation guidance for AI agents based on task descriptions and project context. This should leverage the Anthropic Claude API to create step-by-step instructions, suggest relevant libraries or tools, and provide code snippets or pseudocode where appropriate. Implement caching to reduce API calls and improve performance.
+### Description: Develop a system that generates detailed implementation guidance for AI agents based on task descriptions and project context. This should leverage the Google Gemini API to create step-by-step instructions, suggest relevant libraries or tools, and provide code snippets or pseudocode where appropriate. Implement caching to reduce API calls and improve performance.
 ### Details:
 
 

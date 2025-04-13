@@ -10,7 +10,7 @@ Create a Phase 1 foundation for context integration in Task Master that provides
 1. Add `--context-file` Flag to AI Commands:
    - Add a consistent `--context-file <file>` option to all AI-related commands (expand, update, add-task, etc.)
    - Implement file reading functionality that loads content from the specified file
-   - Add content integration into Claude API prompts with appropriate formatting
+   - Add content integration into Gemini API prompts with appropriate formatting
    - Handle error conditions such as file not found gracefully
    - Update help documentation to explain the new option
 
@@ -47,7 +47,7 @@ Testing should verify that the context foundation works as expected and adds val
 
 2. Integration Tests:
    - Test each AI-related command with context options
-   - Verify context is properly included in API calls to Claude
+   - Verify context is properly included in API calls to Gemini
    - Test combinations of multiple context options
    - Verify help documentation includes the new options
 
@@ -68,13 +68,13 @@ The testing focus should be on proving immediate value to users while ensuring r
 ### Dependencies: None
 ### Description: Add the --context-file <file> option to all AI-related commands and implement file reading functionality
 ### Details:
-1. Update the contextOptions array in commands.js to include the --context-file option\n2. Modify AI command action handlers to check for the context-file option\n3. Implement file reading functionality that loads content from the specified file\n4. Add content integration into Claude API prompts with appropriate formatting\n5. Add error handling for file not found or permission issues\n6. Update help documentation to explain the new option with examples
+1. Update the contextOptions array in commands.js to include the --context-file option\n2. Modify AI command action handlers to check for the context-file option\n3. Implement file reading functionality that loads content from the specified file\n4. Add content integration into Gemini API prompts with appropriate formatting\n5. Add error handling for file not found or permission issues\n6. Update help documentation to explain the new option with examples
 
 ## 2. Implement --context Flag for AI Commands [pending]
 ### Dependencies: None
 ### Description: Add support for directly passing context in the command line
 ### Details:
-1. Update AI command options to include a --context option\n2. Modify action handlers to process context from command line\n3. Sanitize and truncate long context inputs\n4. Add content integration into Claude API prompts\n5. Update help documentation to explain the new option with examples
+1. Update AI command options to include a --context option\n2. Modify action handlers to process context from command line\n3. Sanitize and truncate long context inputs\n4. Add content integration into Gemini API prompts\n5. Update help documentation to explain the new option with examples
 
 ## 3. Implement Cursor Rules Integration for Context [pending]
 ### Dependencies: None

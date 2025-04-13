@@ -26,8 +26,8 @@ jest.mock('chalk', () => ({
 
 jest.mock('boxen', () => jest.fn(text => `[boxed: ${text}]`));
 
-jest.mock('@anthropic-ai/sdk', () => ({
-  Anthropic: jest.fn().mockImplementation(() => ({})),
+jest.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({})),
 }));
 
 // Mock utils module

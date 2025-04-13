@@ -43,7 +43,7 @@ Testing should verify the enhanced context functionality:
    - Test code extraction with various file types and sizes
    - Verify intelligent parsing correctly identifies important code elements
    - Test token optimization by comparing full file extraction vs. optimized extraction
-   - Check code formatting in prompts sent to Claude API
+   - Check code formatting in prompts sent to Gemini API
 
 2. Task History Testing:
    - Test with different combinations of task IDs

@@ -9,7 +9,7 @@ Implement Perplexity integration including:
 - API authentication via OpenAI client
 - Create research-oriented prompt templates
 - Implement response handling for Perplexity
-- Add fallback to Claude when Perplexity is unavailable
+- Add fallback to Gemini when Perplexity is unavailable
 - Implement response quality comparison logic
 - Add configuration for model selection
 
@@ -35,15 +35,15 @@ Test connectivity to Perplexity API. Verify research-oriented prompts return use
 ### Details:
 
 
-## 4. Implement Claude Fallback Mechanism [done]
+## 4. Implement Gemini Fallback Mechanism [done]
 ### Dependencies: None
-### Description: Create a fallback system that automatically switches to the Claude API when Perplexity is unavailable or returns errors. This system should detect API failures, rate limiting, or quality issues with Perplexity responses and seamlessly transition to using Claude with appropriate prompt modifications. Implement retry logic with exponential backoff before falling back to Claude. Log all fallback events for monitoring.
+### Description: Create a fallback system that automatically switches to the Gemini API when Perplexity is unavailable or returns errors. This system should detect API failures, rate limiting, or quality issues with Perplexity responses and seamlessly transition to using Gemini with appropriate prompt modifications. Implement retry logic with exponential backoff before falling back to Gemini. Log all fallback events for monitoring.
 ### Details:
 
 
 ## 5. Develop Response Quality Comparison and Model Selection [done]
 ### Dependencies: None
-### Description: Implement a system to compare response quality between Perplexity and Claude, and provide configuration options for model selection. Create metrics for evaluating response quality (e.g., specificity, relevance, actionability). Add configuration options that allow users to specify which model to use for different types of tasks. Implement a caching mechanism to reduce API calls and costs when appropriate.
+### Description: Implement a system to compare response quality between Perplexity and Gemini, and provide configuration options for model selection. Create metrics for evaluating response quality (e.g., specificity, relevance, actionability). Add configuration options that allow users to specify which model to use for different types of tasks. Implement a caching mechanism to reduce API calls and costs when appropriate.
 ### Details:
 
 

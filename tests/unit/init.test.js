@@ -78,7 +78,7 @@ describe('Windsurf Rules File Handling', () => {
           // Should append content when file exists
           const existingContent = fs.readFileSync(targetPath, 'utf8');
           const updatedContent = existingContent.trim() + 
-            '\n\n# Added by Claude Task Master - Development Workflow Rules\n\n' + 
+            '\n\n# Added by Gemini Task Master - Development Workflow Rules\n\n' + 
             'New content';
           fs.writeFileSync(targetPath, updatedContent);
           return;
@@ -120,7 +120,7 @@ describe('Windsurf Rules File Handling', () => {
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       targetPath,
-      expect.stringContaining('Added by Claude Task Master')
+      expect.stringContaining('Added by Gemini Task Master')
     );
   });
   

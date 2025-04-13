@@ -1,8 +1,9 @@
 /**
- * Sample Claude API response for testing
+ * Sample Gemini API response for testing
+ * Adjust structure based on actual Gemini responses
  */
 
-export const sampleClaudeResponse = {
+export const sampleGeminiResponse = {
   tasks: [
     {
       id: 1,

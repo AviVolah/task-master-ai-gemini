@@ -51,7 +51,7 @@ Review documentation for clarity and completeness. Have users unfamiliar with th
 
 ## 6. Develop API Integration and Extension Documentation [done]
 ### Dependencies: 18.5
-### Description: Create technical documentation for API integrations (Claude, Perplexity) and extension points. Include details on prompt templates, response handling, token optimization, and custom integrations. Document the internal architecture to help developers extend the tool with new features or integrations.
+### Description: Create technical documentation for API integrations (Gemini, Perplexity) and extension points. Include details on prompt templates, response handling, token optimization, and custom integrations. Document the internal architecture to help developers extend the tool with new features or integrations.
 ### Details:
 
 

@@ -1,9 +1,9 @@
 # Task ID: 7
-# Title: Implement Task Expansion with Claude
+# Title: Implement Task Expansion with Gemini
 # Status: done
 # Dependencies: 3, 5
 # Priority: medium
-# Description: Create functionality to expand tasks into subtasks using Claude's AI capabilities.
+# Description: Create functionality to expand tasks into subtasks using Gemini's AI capabilities.
 # Details:
 Build task expansion functionality including:
 - Create subtask generation prompts
@@ -19,7 +19,7 @@ Test expanding various types of tasks into subtasks. Verify that subtasks are pr
 # Subtasks:
 ## 1. Design and Implement Subtask Generation Prompts [done]
 ### Dependencies: None
-### Description: Create optimized prompt templates for Claude to generate subtasks from parent tasks. Design the prompts to include task context, project information, and formatting instructions that ensure consistent, high-quality subtask generation. Implement a prompt template system that allows for dynamic insertion of task details, configurable number of subtasks, and additional context parameters.
+### Description: Create optimized prompt templates for Gemini to generate subtasks from parent tasks. Design the prompts to include task context, project information, and formatting instructions that ensure consistent, high-quality subtask generation. Implement a prompt template system that allows for dynamic insertion of task details, configurable number of subtasks, and additional context parameters.
 ### Details:
 
 
@@ -31,7 +31,7 @@ Test expanding various types of tasks into subtasks. Verify that subtasks are pr
 
 ## 3. Implement Context-Aware Expansion Capabilities [done]
 ### Dependencies: 7.1
-### Description: Enhance the task expansion functionality to incorporate project context when generating subtasks. Develop a system to gather relevant information from the project, such as related tasks, dependencies, and previously completed work. Implement logic to include this context in the Claude prompts to improve the relevance and quality of generated subtasks.
+### Description: Enhance the task expansion functionality to incorporate project context when generating subtasks. Develop a system to gather relevant information from the project, such as related tasks, dependencies, and previously completed work. Implement logic to include this context in the Gemini prompts to improve the relevance and quality of generated subtasks.
 ### Details:
 
 

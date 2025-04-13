@@ -24,7 +24,7 @@ Simulate implementation changes and test the system's ability to update future t
 
 ## 2. Implement AI-Powered Task Rewriting [done]
 ### Dependencies: None
-### Description: Develop functionality to use Claude API to rewrite pending tasks based on new implementation context. This involves creating specialized prompts that include the original task description, the implementation details of completed dependency tasks, and instructions to update the pending task to align with the actual implementation. The system should generate updated task descriptions, details, and test strategies.
+### Description: Develop functionality to use Gemini API to rewrite pending tasks based on new implementation context. This involves creating specialized prompts that include the original task description, the implementation details of completed dependency tasks, and instructions to update the pending task to align with the actual implementation. The system should generate updated task descriptions, details, and test strategies.
 ### Details:
 
 

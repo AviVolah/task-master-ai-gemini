@@ -3,14 +3,14 @@
 # Status: pending
 # Dependencies: 22
 # Priority: high
-# Description: Create a new 'generate-test' command in Task Master that leverages AI to automatically produce Jest test files for tasks based on their descriptions and subtasks, utilizing Claude API for AI integration.
+# Description: Create a new 'generate-test' command in Task Master that leverages AI to automatically produce Jest test files for tasks based on their descriptions and subtasks, utilizing Gemini API for AI integration.
 # Details:
 Implement a new command in the Task Master CLI that generates comprehensive Jest test files for tasks. The command should be callable as 'task-master generate-test --id=1' and should:
 
 1. Accept a task ID parameter to identify which task to generate tests for
 2. Retrieve the task and its subtasks from the task store
 3. Analyze the task description, details, and subtasks to understand implementation requirements
-4. Construct an appropriate prompt for the AI service using Claude API
+4. Construct an appropriate prompt for the AI service using Gemini API
 5. Process the AI response to create a well-formatted test file named 'task_XXX.test.ts' where XXX is the zero-padded task ID
 6. Include appropriate test cases that cover the main functionality described in the task
 7. Generate mocks for external dependencies identified in the task description
@@ -19,14 +19,14 @@ Implement a new command in the Task Master CLI that generates comprehensive Jest
 10. Include error handling for API failures, invalid task IDs, etc.
 11. Add appropriate documentation for the command in the help system
 
-The implementation should utilize the Claude API for AI service integration and maintain consistency with the current command structure and error handling patterns. Consider using TypeScript for better type safety and integration with the Claude API.
+The implementation should utilize the Gemini API for AI service integration and maintain consistency with the current command structure and error handling patterns. Consider using TypeScript for better type safety and integration with the Gemini API.
 
 # Test Strategy:
 Testing for this feature should include:
 
 1. Unit tests for the command handler function to verify it correctly processes arguments and options
-2. Mock tests for the Claude API integration to ensure proper prompt construction and response handling
-3. Integration tests that verify the end-to-end flow using a mock Claude API response
+2. Mock tests for the Gemini API integration to ensure proper prompt construction and response handling
+3. Integration tests that verify the end-to-end flow using a mock Gemini API response
 4. Tests for error conditions including:
    - Invalid task IDs
    - Network failures when contacting the AI service

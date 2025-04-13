@@ -222,7 +222,7 @@ const testAddTask = (tasksData, taskPrompt, dependencies = [], priority = "mediu
 
 // Import after mocks
 import * as taskManager from "../../scripts/modules/task-manager.js";
-import { sampleClaudeResponse } from "../fixtures/sample-claude-response.js";
+import { sampleGeminiResponse } from "../fixtures/sample-gemini-response.js";
 import { sampleTasks, emptySampleTasks } from "../fixtures/sample-tasks.js";
 
 // Destructure the required functions for convenience
@@ -504,7 +504,7 @@ describe("Task Manager Module", () => {
       mockReadFileSync.mockReturnValue(samplePRDContent);
       mockExistsSync.mockReturnValue(true);
       mockDirname.mockReturnValue("tasks");
-      mockCallGemini.mockResolvedValue(sampleClaudeResponse);
+      mockCallGemini.mockResolvedValue(sampleGeminiResponse);
       mockGenerateTaskFiles.mockResolvedValue(undefined);
     });
 
@@ -522,7 +522,7 @@ describe("Task Manager Module", () => {
       expect(mockExistsSync).toHaveBeenCalledWith("tasks");
 
       // Verify writeJSON was called with the correct arguments
-      expect(mockWriteJSON).toHaveBeenCalledWith("tasks/tasks.json", sampleClaudeResponse);
+      expect(mockWriteJSON).toHaveBeenCalledWith("tasks/tasks.json", sampleGeminiResponse);
 
       // Verify generateTaskFiles was called
       expect(mockGenerateTaskFiles).toHaveBeenCalledWith("tasks/tasks.json", "tasks");

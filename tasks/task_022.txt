@@ -25,7 +25,7 @@ Implement a comprehensive test suite using Jest as the testing framework. The te
    - Test edge cases like handling large numbers of tasks
 
 Implement proper mocking for:
-- Claude API interactions (using Jest mock functions)
+- Gemini API interactions (using Jest mock functions)
 - File system operations (using mock-fs or similar)
 - User input/output (using mock stdin/stdout)
 
@@ -59,7 +59,7 @@ The task will be considered complete when all tests pass consistently, coverage 
 # Subtasks:
 ## 1. Set Up Jest Testing Environment [done]
 ### Dependencies: None
-### Description: Configure Jest for the project, including setting up the jest.config.js file, adding necessary dependencies, and creating the initial test directory structure. Implement proper mocking for Claude API interactions, file system operations, and user input/output. Set up test coverage reporting and configure it to run in the CI pipeline.
+### Description: Configure Jest for the project, including setting up the jest.config.js file, adding necessary dependencies, and creating the initial test directory structure. Implement proper mocking for Gemini API interactions, file system operations, and user input/output. Set up test coverage reporting and configure it to run in the CI pipeline.
 ### Details:
 
 

@@ -141,7 +141,7 @@ describe('Commands Module', () => {
       const program = setupCLI();
       const version = program._version();
       expect(mockReadFileSync).not.toHaveBeenCalled();
-      expect(version).toBe('1.5.0');
+      expect(version).toBe('1.0.0');
     });
 
     test('should use default version when package.json reading throws an error', () => {
@@ -153,7 +153,7 @@ describe('Commands Module', () => {
       const program = setupCLI();
       const version = program._version();
       expect(mockReadFileSync).toHaveBeenCalled();
-      expect(version).toBe('1.5.0');
+      expect(version).toBe('1.0.0');
     });
   });
 

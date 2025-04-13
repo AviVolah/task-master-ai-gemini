@@ -20,7 +20,7 @@ Track token usage across various operations and verify accuracy. Test that limit
 # Subtasks:
 ## 1. Implement Token Usage Tracking for API Calls [done]
 ### Dependencies: 20.5
-### Description: Create a middleware or wrapper function that intercepts all API calls to OpenAI, Anthropic, and Perplexity. This function should count the number of tokens used in both the request and response, storing this information in a persistent data store (e.g., SQLite database). Implement a caching mechanism to reduce redundant API calls and token usage.
+### Description: Create a middleware or wrapper function that intercepts all API calls to OpenAI, Google, and Perplexity. This function should count the number of tokens used in both the request and response, storing this information in a persistent data store (e.g., SQLite database). Implement a caching mechanism to reduce redundant API calls and token usage.
 ### Details:
 
 

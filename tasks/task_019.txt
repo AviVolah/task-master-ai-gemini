@@ -26,7 +26,7 @@ Deliberately trigger various error conditions and verify that the system handles
 
 ## 2. Implement API Error Handling with Retry Logic [done]
 ### Dependencies: None
-### Description: Develop a robust error handling system for API calls, including automatic retries with exponential backoff. Create a wrapper for API requests that catches common errors (e.g., network timeouts, rate limiting) and implements appropriate retry logic. This should be integrated with both the Claude and Perplexity API calls.
+### Description: Develop a robust error handling system for API calls, including automatic retries with exponential backoff. Create a wrapper for API requests that catches common errors (e.g., network timeouts, rate limiting) and implements appropriate retry logic. This should be integrated with both the Gemini and Perplexity API calls.
 ### Details:
 
 

@@ -13,18 +13,18 @@ Implement a new command in the task-master CLI that enables Cursor to learn from
    - Accept an optional parameter for specifying which patterns to focus on
    - Use git diff to extract code changes since the last commit
    - Access the Cursor chat history if possible (investigate API or file storage location)
-   - Call Claude via ai-services.js with the following context:
+   - Call Gemini via ai-services.js with the following context:
      * Code diffs
      * Chat history excerpts showing challenges and solutions
      * Existing rules from .cursor/rules if present
-   - Parse Claude's response to extract rule definitions
+   - Parse Gemini's response to extract rule definitions
    - Create or update .mdc files in the .cursor/rules directory
    - Provide a summary of what was learned and which rules were updated
 
 4. Create helper functions to:
    - Extract relevant patterns from diffs
-   - Format the prompt for Claude to focus on identifying reusable patterns
-   - Parse Claude's response into valid rule definitions
+   - Format the prompt for Gemini to focus on identifying reusable patterns
+   - Parse Gemini's response into valid rule definitions
    - Handle rule conflicts or duplications
 
 5. Ensure the command handles errors gracefully, especially if chat history is inaccessible

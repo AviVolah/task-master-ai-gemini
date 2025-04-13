@@ -8,7 +8,7 @@
 Implement PRD parsing functionality including:
 - PRD file reading from specified path
 - Prompt engineering for effective PRD parsing
-- Convert PRD content to task structure via Claude API
+- Convert PRD content to task structure via Gemini API
 - Implement intelligent dependency inference
 - Add priority assignment logic
 - Handle large PRDs by chunking if necessary
@@ -25,19 +25,19 @@ Test with sample PRDs of varying complexity. Verify that generated tasks accurat
 
 ## 2. Design and Engineer Effective PRD Parsing Prompts [done]
 ### Dependencies: None
-### Description: Create a set of carefully engineered prompts for Claude API that effectively extract structured task information from PRD content. Design prompts that guide Claude to identify tasks, dependencies, priorities, and implementation details from unstructured PRD text. Include system prompts, few-shot examples, and output format specifications to ensure consistent results.
+### Description: Create a set of carefully engineered prompts for Gemini API that effectively extract structured task information from PRD content. Design prompts that guide Gemini to identify tasks, dependencies, priorities, and implementation details from unstructured PRD text. Include system prompts, few-shot examples, and output format specifications to ensure consistent results.
 ### Details:
 
 
 ## 3. Implement PRD to Task Conversion System [done]
 ### Dependencies: 6.1
-### Description: Develop the core functionality that sends PRD content to Claude API and converts the response into the task data structure. This includes sending the engineered prompts with PRD content to Claude, parsing the structured response, and transforming it into valid task objects that conform to the task model. Implement validation to ensure the generated tasks meet all requirements.
+### Description: Develop the core functionality that sends PRD content to Gemini API and converts the response into the task data structure. This includes sending the engineered prompts with PRD content to Gemini, parsing the structured response, and transforming it into valid task objects that conform to the task model. Implement validation to ensure the generated tasks meet all requirements.
 ### Details:
 
 
 ## 4. Build Intelligent Dependency Inference System [done]
 ### Dependencies: 6.1, 6.3
-### Description: Create an algorithm that analyzes the generated tasks and infers logical dependencies between them. The system should identify which tasks must be completed before others based on the content and context of each task. Implement both explicit dependency detection (from Claude's output) and implicit dependency inference (based on task relationships and logical ordering).
+### Description: Create an algorithm that analyzes the generated tasks and infers logical dependencies between them. The system should identify which tasks must be completed before others based on the content and context of each task. Implement both explicit dependency detection (from Gemini's output) and implicit dependency inference (based on task relationships and logical ordering).
 ### Details:
 
 
