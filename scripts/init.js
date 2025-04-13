@@ -197,8 +197,8 @@ function copyTemplateFile(templateName, targetPath, replacements = {}) {
       
       if (newLines.length > 0) {
         // Add a comment to separate the original content from our additions
-        const updatedContent = existingContent.trim() + 
-          '\n\n# Added by Claude Task Master\n' + 
+        const updatedContent = existingContent.trim() +
+          '\n\n# Added by Gemini Task Master\n' +
           newLines.join('\n');
         fs.writeFileSync(targetPath, updatedContent);
         log('success', `Updated ${targetPath} with additional entries`);
@@ -428,7 +428,7 @@ function createProjectStructure(projectName, projectDescription, projectVersion,
       "parse-prd": "node scripts/dev.js parse-prd"
     },
     dependencies: {
-      "@anthropic-ai/sdk": "^0.39.0",
+      "@google/generative-ai": "^0.24.0",
       "chalk": "^5.3.0",
       "commander": "^11.1.0",
       "dotenv": "^16.3.1",
@@ -574,7 +574,7 @@ function createProjectStructure(projectName, projectDescription, projectVersion,
   // Display next steps in a nice box
   console.log(boxen(
     chalk.cyan.bold('Things you can now do:') + '\n\n' +
-    chalk.white('1. ') + chalk.yellow('Rename .env.example to .env and add your ANTHROPIC_API_KEY and PERPLEXITY_API_KEY') + '\n' +
+    chalk.white('1. ') + chalk.yellow('Rename .env.example to .env and add your GOOGLE_API_KEY and PERPLEXITY_API_KEY') + '\n' +
     chalk.white('2. ') + chalk.yellow('Discuss your idea with AI, and once ready ask for a PRD using the example_prd.txt file, and save what you get to scripts/PRD.txt') + '\n' +
     chalk.white('3. ') + chalk.yellow('Ask Cursor Agent to parse your PRD.txt and generate tasks') + '\n' +
     chalk.white('   └─ ') + chalk.dim('You can also run ') + chalk.cyan('task-master parse-prd <your-prd-file.txt>') + '\n' +
